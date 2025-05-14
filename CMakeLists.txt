@@ -12,7 +12,8 @@ set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/bin)
 # Setting project
 project(hello VERSION 1.0)
 
-target_include_directories("${PROJECT_NAME}" PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
 add_executable("${PROJECT_NAME}" "src/main.cpp")
+
+target_include_directories(hello PUBLIC "include")
 
 
