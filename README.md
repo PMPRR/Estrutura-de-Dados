@@ -20,5 +20,20 @@
 - **src:** Diretório para as definições(arquivos.cpp) do projeto
 
 ## How to Run:
-#### Requirements:
- - docker
+#### Docker:
+```shell
+sudo docker build -t cpp_project .
+sudo docker run --rm --name my_cpp_application -d cpp_project
+```
+#### Manually:
+É necessário ter instalado `gcc`, `cmake`.
+Caso ainda não tenha criado o diretório `build/`:
+```
+mkdir build
+```
+Para compilar o projeto:
+```
+cd build
+cmake .. && make
+```
+
