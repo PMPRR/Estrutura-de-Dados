@@ -14,4 +14,11 @@ RUN apt-get update && apt-get -y --no-install-recommends install \
     clang \
     git \
     cmake \
-    gdb \
+    gdb 
+
+RUN mkdir build && \
+    cd build && \
+    cmake .. && \
+    make
+
+CMD ["./hello"]

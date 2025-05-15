@@ -1,5 +1,5 @@
-# Projeto de Estrutura de Dados
-## Estrutura do Projeto
+ Projeto de Estrutura de Dados
+## Project Structure
 ```
 ├── CMakeLists.txt
 ├── README.md
@@ -18,3 +18,7 @@
 - **build:** Diretório para as dependencias do Cmake
 - **include:** Diretório para as declarações(arquivos.h) do projeto
 - **src:** Diretório para as definições(arquivos.cpp) do projeto
+
+## How to Run:
+#### Requirements:
+ - docker
