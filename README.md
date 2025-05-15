@@ -20,5 +20,5 @@
 - **src:** Diretório para as definições(arquivos.cpp) do projeto
 
 ## How to Run:
-#### Requirements:
- - docker
+#### Docker:
+#### Manually:
