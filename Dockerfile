@@ -2,9 +2,6 @@ FROM ubuntu:18.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-WORKDIR /app
-
-COPY . .
 
 SHELL ["/bin/bash", "-c"]
 
@@ -16,9 +13,21 @@ RUN apt-get update && apt-get -y --no-install-recommends install \
     cmake \
     gdb 
 
+WORKDIR /app
+
+COPY libs/ ./libs/
+COPY test/ ./test/
+COPY docs/ ./docs/
+COPY CMakeLists.txt .
+COPY README.md .
+COPY include/ ./include/
+COPY src/ ./src/
+
+
 RUN mkdir build && \
+    mkdir bin && \
     cd build && \
     cmake .. && \
     make
 
-CMD ["./hello"]
+CMD ["./bin/hello"]
