@@ -7,12 +7,13 @@ set(CMAKE_CXX_COMPILER g++)
 
 # Setting default paths for cmake
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_SOURCE_DIR})
-set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/bin)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 
 # Setting project
-project(hello VERSION 1.0)
+project(hello VERSION 1.0 LANGUAGES CXX)
 
-add_executable("${PROJECT_NAME}" "src/main.cpp")
+file(GLOB_RECURSE ALL_SOURCES "src/*.cpp")
+add_executable(${CMAKE_PROJECT_NAME} ${ALL_SOURCES})
 
 target_include_directories(hello PUBLIC "include")
 
