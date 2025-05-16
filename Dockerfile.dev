@@ -18,10 +18,11 @@ COPY config/nvim ./nvim
 
 WORKDIR /home
 
-RUN touch test.txt
 COPY config/git_prompt.zsh .
 COPY config/aliases.zsh .
 COPY config/.zshrc .
+
+RUN source .zshrc
 
 SHELL ["/bin/zsh", "-c"]
 
