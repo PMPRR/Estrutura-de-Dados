@@ -17,7 +17,7 @@ services:
       - ./docs:/app/docs
       - ./libs:/app/libs
       - ./src:/app/src
-      - ./include:/app/src
+      - ./include:/app/include
       - ./CMakeLists.txt:/app/CMakeLists.txt
       - ./README.md:/app/README.md
 
