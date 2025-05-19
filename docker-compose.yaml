@@ -1,17 +1,10 @@
 services:
-  prod-app:
-    image: cpp_project
-    volumes:
-      - .:/app
-    command: ["tail", "-f", "/dev/null"]
-
-  
-  dev-app:
+  paulo-dev:
     build:
       context: .
-      dockerfile: Dockerfile.dev
-    image: myapp:dev
-    command: ["tail", "-f", "/dev/null"]
+      dockerfile: Dockerfile.paulo
+    image: myapp:paulodev
+    command: ["/bin/zsh", "-c", "source $HOME/.zshrc && tail -f /dev/null"]
     volumes:
       - ./test:/app/test
       - ./docs:/app/docs
