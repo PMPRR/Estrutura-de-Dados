@@ -25,6 +25,17 @@
 sudo docker build -t cpp_project .
 sudo docker run --rm --name my_cpp_application -d cpp_project
 ```
+### Docker Compose:
+Para rodar uma vez o código use o `app-run`, caso queria programar dentro do container use `app-dev`
+```shell
+docker compose build app-run
+docker compose up app-run
+```
+```shell
+docker compose build app-dev
+docker compose up app-dev -d
+docker exec -it CONTAINER_NUMBER bash
+```
 #### Manually:
 É necessário ter instalado `gcc`, `cmake`.
 Caso ainda não tenha criado o diretório `build/`:
