@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.paulo
-    image: myapp:paulodev
+    image: esd:paulodev
     command: ["/bin/zsh", "-c", "source $HOME/.zshrc && tail -f /dev/null"]
     volumes:
       - ./test:/app/test
@@ -14,4 +14,25 @@ services:
       - ./CMakeLists.txt:/app/CMakeLists.txt
       - ./README.md:/app/README.md
 
-      
+  app-run:
+    build:
+      context: .
+      dockerfile: Dockerfile.run
+    image: esd:run
+    
+  app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: esd:dev
+    command: ["tail", "-f", "/dev/null"]
+    volumes:
+      - ./test:/app/test
+      - ./docs:/app/docs
+      - ./libs:/app/libs
+      - ./src:/app/src
+      - ./include:/app/include
+      - ./CMakeLists.txt:/app/CMakeLists.txt
+      - ./README.md:/app/README.md
+
+
