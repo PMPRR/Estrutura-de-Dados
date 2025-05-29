@@ -7,8 +7,18 @@ SHELL ["/bin/bash", "-c"]
 RUN apt-get update && apt-get -y --no-install-recommends install \
     build-essential \
     gcc \
-    cmake 
+    unzip \
+    cmake \
+    curl \
+    ca-certificates && update-ca-certificates
 
+WORKDIR /app
+
+RUN mkdir data
+
+WORKDIR /app/data
+
+RUN curl -L -o data.zip https://www.kaggle.com/api/v1/datasets/download/mrwellsdavid/unsw-nb15 && unzip data.zip
 
 WORKDIR /app
 
@@ -20,11 +30,11 @@ COPY README.md .
 COPY include/ ./include/
 COPY src/ ./src/
 
-
 RUN mkdir build && \
     mkdir bin && \
     cd build && \
     cmake .. && \
     make
+
 
 CMD ["./bin/hello"]

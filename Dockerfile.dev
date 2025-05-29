@@ -2,19 +2,25 @@ FROM ubuntu:18.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-
 SHELL ["/bin/bash", "-c"]
 
 RUN apt-get update && apt-get -y --no-install-recommends install \
     build-essential \
     gcc \
-    clang \
+    curl \
     cmake \
-    gdb
+    gdb \
+    unzip \
+    ca-certificates && update-ca-certificates
 
 WORKDIR /app
 
 RUN mkdir build && \
-    mkdir bin
+    mkdir bin && \
+    mkdir data 
 
+WORKDIR /app/data
 
+RUN curl -L -o data.zip https://www.kaggle.com/api/v1/datasets/download/mrwellsdavid/unsw-nb15 && unzip data.zip
+
+WORKDIR /app
