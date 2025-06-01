@@ -36,6 +36,14 @@ docker compose build app-dev
 docker compose up app-dev -d
 docker exec -it CONTAINER_NUMBER bash
 ```
+### Caso o docker Daemon NÂO estiver funcionando
+```shell
+$ systemctl --user start docker
+```
+### Para ativa-lo no início
+```shell
+$ systemctl --user enable docker
+```
 #### Manually:
 É necessário ter instalado `gcc`, `cmake`.
 Caso ainda não tenha criado o diretório `build/`:
