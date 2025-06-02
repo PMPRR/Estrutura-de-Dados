@@ -310,6 +310,8 @@ public:
     {};
 };
 
+constexpr const char* PATH_DATA_TESTING = "/app/data/UNSW_NB15_testing-set.csv";
+constexpr const char* PATH_DATA_TRAINING = "/app/data/UNSW_NB15_training-set.csv";
 
 #endif
 
