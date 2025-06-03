@@ -2,6 +2,8 @@ FROM ubuntu:18.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+ENV PATH="/app/bin:${PATH}"
+
 SHELL ["/bin/bash", "-c"]
 
 RUN apt-get update && apt-get -y --no-install-recommends install \
@@ -11,10 +13,6 @@ RUN apt-get update && apt-get -y --no-install-recommends install \
     cmake \
     curl \
     ca-certificates && update-ca-certificates
-
-WORKDIR /app
-
-RUN mkdir data
 
 WORKDIR /app/data
 
@@ -34,7 +32,11 @@ RUN mkdir build && \
     mkdir bin && \
     cd build && \
     cmake .. && \
-    make
+    cd /app && \
+    cmake --build build
+
+ENTRYPOINT ["/bin/bash", "-c"]
+
+CMD [ "echo 'Available binaries in /app/bin:'; ls -1 /app/bin; echo -e '\\nUsage: docker run <image_name> <binary_name> [args...]'; echo 'Example: docker run <image_name> hello'" ]
 
 
-CMD ["./bin/hello"]
