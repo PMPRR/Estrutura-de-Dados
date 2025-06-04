@@ -1,0 +1,3 @@
+pyzmq
+pandas
+sdv==1.21.0

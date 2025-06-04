@@ -1,0 +1,36 @@
+#----------------------- 
+# Criado pela IA gemini:
+
+
+# Use an official Python runtime as a parent image
+FROM python:3.9-slim-buster
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Install system dependencies for ZeroMQ (libzmq3-dev)
+# and any other build tools if needed by Python packages
+RUN apt-get update && apt-get install -y \
+    libzmq3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+# pyzmq is needed for ZeroMQ communication
+# pandas and sdv are needed for the GAN model and data generation
+COPY python/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the GAN model file
+# Ensure sdv_ctgan_unsw2_model.pkl is in the same directory as this Dockerfile
+COPY python/sdv_ctgan_unsw2_model.pkl .
+
+# Copy the Python publisher script
+COPY python/generate.py .
+COPY python/categorical.py .
+
+# Expose the port that the Python publisher will bind to
+# This makes the port accessible within the Docker network and optionally to the host
+EXPOSE 5556
+
+# Command to run the Python publisher when the container starts
+CMD ["python", "generate.py"]

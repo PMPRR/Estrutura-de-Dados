@@ -1,30 +1,19 @@
 services:
-  paulo-dev:
-    build:
-      context: .
-      dockerfile: Dockerfile.paulo
-    image: esd:paulodev
-    command: ["/bin/zsh", "-c", "source $HOME/.zshrc && tail -f /dev/null"]
-    volumes:
-      - ./test:/app/test
-      - ./docs:/app/docs
-      - ./libs:/app/libs
-      - ./src:/app/src
-      - ./include:/app/include
-      - ./CMakeLists.txt:/app/CMakeLists.txt
-      - ./README.md:/app/README.md
-
+  # To run tests and the main build
   app-run:
     build:
       context: .
       dockerfile: Dockerfile.run
-    image: esd:run
-    
+    image: esd:run # It's good practice to also name images for other services
+    depends_on:
+      - python_publisher
+
+  # To program the inside docker
   app-dev:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    image: esd:dev
+    image: esd:dev # It's good practice to also name images for other services
     command: ["tail", "-f", "/dev/null"]
     volumes:
       - ./test:/app/test
@@ -34,5 +23,33 @@ services:
       - ./include:/app/include
       - ./CMakeLists.txt:/app/CMakeLists.txt
       - ./README.md:/app/README.md
+    depends_on:
+      - python_publisher
 
+  app-main:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    image: esd:main # This was in your original, which is good
+    depends_on:
+      - python_publisher
+    command: ["./bin/hello"]
+
+  # Container to generate synthetic data
+  python_publisher:
+    build:
+      context: . # Build context is the current directory
+      dockerfile: Dockerfile.python # Use the Python Dockerfile
+    image: esd-python_publisher # ADD THIS LINE or ensure it matches the name Docker uses
+    container_name: GAN_generator
+    ports:
+      - "5556:5556"
+    # If you are NOT using a GPU, ensure the 'deploy' section for GPU resources is removed.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1 
+              capabilities: [gpu]
 

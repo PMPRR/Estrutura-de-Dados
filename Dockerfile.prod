@@ -1,0 +1,38 @@
+FROM ubuntu:18.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+ENV PATH="/app/bin:${PATH}"
+
+SHELL ["/bin/bash", "-c"]
+
+RUN apt-get update && apt-get install -y \
+    libzmq3-dev \
+    pkg-config \
+    gcc \
+    g++ \
+    cmake \
+    build-essential \
+    cmake \
+    # Clean up apt cache to reduce image size.
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY libs/ ./libs/
+COPY test/ ./test/
+COPY docs/ ./docs/
+COPY CMakeLists.txt .
+COPY README.md .
+COPY include/ ./include/
+COPY src/ ./src/
+
+RUN mkdir build && \
+    mkdir bin && \
+    cd build && \
+    cmake .. && \
+    cd /app && \
+    cmake --build build
+
+
+
