@@ -2,4 +2,5 @@ build/
 bin/
 config/
 data/
+python/__pycache__
 .clangd
