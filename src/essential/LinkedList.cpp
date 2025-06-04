@@ -1,4 +1,4 @@
-#include "/home/fernandonishio/Estrutura-de-Dados/include/data.h"
+#include "data.h"
 #include <iostream>
 #include <cmath>
 #include <algorithm>
