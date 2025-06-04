@@ -189,26 +189,13 @@ enum class State : uint8_t {
 };
 
 /*
-    * Automatizado com a ajuda do CHATGPT, prompt abaixo:
-    * """
-    * ifndef DATA_H_
-    * #define DATA_H_
-    * 
-    * class Data{
-    * public:
-    *     bool label;  ///< True when is a attack, False when is a normal connection
-    *     float dur;  ///< Flow duration in seconds
-    * };
-    * 
-    * 
-    * #endif
-    * 
-    * Continue this class with the table you created
-    * """
-    *
+*
+* Criado por IA, junção de chatgpt com gemini 2.5
+*
+*   o chatGPT criou uma classe base DATA com os tamanhos das variavies
+*   o gemini adaptou para receber os dados do python via TCP
 */
-class Data{
-public:
+struct __attribute__((packed)) Data {
     // ——   Identifiers   ——
     uint32_t    id;                 ///< Unique flow/record ID (one per row)
 
@@ -238,8 +225,8 @@ public:
     uint16_t    dloss;              ///< Total packets lost at destination side
 
     uint16_t    swin;               ///< TCP window size (bytes) at source side
-    uint16_t    stcpb;              ///< TCP base sequence number at source
-    uint16_t    dtcpb;              ///< TCP base sequence number at destination
+    uint32_t    stcpb;              ///< TCP base sequence number at source
+    uint32_t    dtcpb;              ///< TCP base sequence number at destination
     uint16_t    dwin;               ///< TCP window size (bytes) at destination
 
     uint16_t    smean;              ///< Mean packet size (bytes) from source
@@ -275,13 +262,14 @@ public:
     Servico     service;
 
     // -- Constructor --
+    Data() {}
     Data(uint32_t id,
         float dur, float rate, float sload, float dload,
         float sinpkt, float dinpkt, float sjit, float djit,
         float tcprtt, float synack, float ackdat,
         uint16_t spkts, uint16_t dpkts, uint32_t sbytes, uint32_t dbytes,
         uint8_t sttl, uint8_t dttl, uint16_t sloss, uint16_t dloss,
-        uint16_t swin, uint16_t stcpb, uint16_t dtcpb, uint16_t dwin,
+        uint16_t swin, uint32_t stcpb, uint32_t dtcpb, uint16_t dwin,
         uint16_t smean, uint16_t dmean, uint16_t trans_depth, uint32_t response_body_len,
         uint16_t ct_srv_src, uint16_t ct_state_ttl, uint16_t ct_dst_ltm,
         uint16_t ct_src_dport_ltm, uint16_t ct_dst_sport_ltm, uint16_t ct_dst_src_ltm,
@@ -309,9 +297,6 @@ public:
         proto(proto), state(state), attack_category(attack_category), service(service)
     {};
 };
-
-constexpr const char* PATH_DATA_TESTING = "/app/data/UNSW_NB15_testing-set.csv";
-constexpr const char* PATH_DATA_TRAINING = "/app/data/UNSW_NB15_training-set.csv";
 
 #endif
 
