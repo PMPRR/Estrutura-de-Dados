@@ -1,0 +1,179 @@
+import os
+
+import pandas as pd
+from sdv.evaluation.single_table import (evaluate_quality, get_column_plot,
+                                         run_diagnostic)
+from sdv.metadata import \
+    SingleTableMetadata  # Added for explicit metadata handling
+from sdv.single_table import CTGANSynthesizer  # Corrected import
+"""
+    Este código foi gerado 100% pelo google gemini 2.5 pro.
+    PROMPT:
+    " Understand this datasets in depth"
+    " With this in mind, create a python code to generate synthetic data with the GAN model "
+    " use the sdv library"
+"""
+# --- Configuration ---
+DATA_FILEPATH = "UNSW_NB15_training-set.csv"
+SAVED_MODEL_FILEPATH = "sdv_ctgan_unsw2_model.pkl"
+EPOCHS = 1200  # Keep low for demonstration; increase for better quality (e.g., 300-500+)
+NUM_SYNTHETIC_SAMPLES_TO_GENERATE = 10000  # Number of samples to generate after loading
+
+# 1. Load the real dataset
+try:
+    real_data = pd.read_csv(DATA_FILEPATH)
+    print(f"Dataset '{DATA_FILEPATH}' loaded successfully.")
+except FileNotFoundError:
+    print(f"Error: '{DATA_FILEPATH}' not found. Please check the file path.")
+    exit()
+
+if "id" in real_data.columns:
+    real_data = real_data.drop(columns=["id"])
+    print("Dropped 'id' column.")
+
+# 2. Prepare data and Define Metadata for SDV
+discrete_columns = [
+    "proto",
+    "service",
+    "state",
+    "is_ftp_login",
+    "attack_cat",
+    "ct_ftp_cmd",
+    "ct_flw_http_mthd",
+    "is_sm_ips_ports",
+]
+actual_discrete_columns = [col for col in discrete_columns if col in real_data.columns]
+missing_discrete_cols = set(discrete_columns) - set(actual_discrete_columns)
+if missing_discrete_cols:
+    print(
+        f"Warning: The following specified discrete columns were not found: {missing_discrete_cols}"
+    )
+
+# Convert actual discrete columns to 'str' (object) type.
+# This helps with metadata detection and ensures they are treated as categorical.
+for col in actual_discrete_columns:
+    real_data[col] = real_data[col].astype(str)
+print(f"Ensured the following columns are string type: {actual_discrete_columns}")
+
+# Create and configure metadata
+print("Detecting metadata from the dataset...")
+metadata = SingleTableMetadata()
+metadata.detect_from_dataframe(data=real_data)
+
+# Explicitly set specified discrete columns as categorical in metadata
+# This ensures SDV treats them correctly, even if auto-detection inferred a different type.
+for col_name in actual_discrete_columns:
+    if col_name in metadata.columns:  # Check if column exists in metadata
+        current_sdtype = metadata.columns[col_name]["sdtype"]
+        if current_sdtype != "categorical":
+            print(
+                f"Updating sdtype for column '{col_name}' from '{current_sdtype}' to 'categorical'."
+            )
+            metadata.update_column(column_name=col_name, sdtype="categorical")
+    else:
+        print(
+            f"Warning: Discrete column '{col_name}' specified but not found in metadata after detection."
+        )
+
+# Example: If there's a primary key (though 'id' was dropped, if another existed)
+# metadata.set_primary_key(column_name='your_primary_key_column')
+
+print("Metadata preparation complete.")
+
+# 3. Initialize and train the CTGANSynthesizer model (if model doesn't exist)
+if not os.path.exists(SAVED_MODEL_FILEPATH):
+    print(f"Saved model '{SAVED_MODEL_FILEPATH}' not found. Training a new model.")
+    # Corrected: Use CTGANSynthesizer and pass metadata
+    sdv_ctgan_model = CTGANSynthesizer(metadata=metadata, epochs=EPOCHS, verbose=True)
+
+    print("Starting SDV CTGANSynthesizer training...")
+    sdv_ctgan_model.fit(real_data)
+    print("SDV CTGANSynthesizer training completed.")
+
+    # 3.1 Save the trained model
+    try:
+        sdv_ctgan_model.save(SAVED_MODEL_FILEPATH)
+        print(f"Trained model saved to '{SAVED_MODEL_FILEPATH}'")
+    except Exception as e:
+        print(f"Error saving model: {e}")
+else:
+    print(f"Found existing model '{SAVED_MODEL_FILEPATH}'. Skipping training.")
+
+# 4. Load the trained model
+print(f"\n--- Loading model from '{SAVED_MODEL_FILEPATH}' ---")
+try:
+    # Corrected: Use CTGANSynthesizer.load
+    loaded_model = CTGANSynthesizer.load(SAVED_MODEL_FILEPATH)
+    print("Model loaded successfully.")
+except FileNotFoundError:
+    print(f"Error: Model file '{SAVED_MODEL_FILEPATH}' not found. Cannot load.")
+    exit()
+except Exception as e:
+    print(f"Error loading model: {e}")
+    exit()
+
+# 5. Generate synthetic samples using the loaded model
+print(
+    f"\n--- Generating {NUM_SYNTHETIC_SAMPLES_TO_GENERATE} synthetic samples using the loaded model ---"
+)
+synthetic_data = loaded_model.sample(num_rows=NUM_SYNTHETIC_SAMPLES_TO_GENERATE)
+
+print(f"\nGenerated {len(synthetic_data)} synthetic samples.")
+print("Synthetic Data (first 5 rows):")
+print(synthetic_data.head())
+
+# 6. Evaluate the synthetic data
+print("\n--- Running Evaluation on data generated by the loaded model ---")
+
+# Metadata for evaluation is retrieved from the loaded model
+evaluation_metadata = loaded_model.get_metadata()
+
+# 6.1 Run Diagnostic Report
+print("\n--- Running Diagnostic Report ---")
+try:
+    diagnostic_report = run_diagnostic(
+        real_data, synthetic_data, metadata=evaluation_metadata
+    )
+    print("Diagnostic Report Results:")
+    # Accessing scores from diagnostic report can vary slightly with SDMetrics versions
+    if hasattr(diagnostic_report, "get_score"):  # Older SDMetrics
+        print(f"Overall Diagnostic Score: {diagnostic_report.get_score()*100:.2f}%")
+    elif hasattr(
+        diagnostic_report, "_overall_score"
+    ):  # Newer SDMetrics (often prints summary by default)
+        print(f"Overall Diagnostic Score: {diagnostic_report._overall_score*100:.2f}%")
+    else:  # Fallback if direct score access methods change
+        print("Diagnostic report generated. Check console output for details.")
+
+
+except Exception as e:
+    print(f"Could not run diagnostic report: {e}")
+
+# 6.2 Run Quality Report
+print("\n--- Running Quality Report ---")
+try:
+    quality_report = evaluate_quality(
+        real_data, synthetic_data, metadata=evaluation_metadata
+    )
+    print(f"Overall Quality Score: {quality_report.get_score()*100:.2f}%")
+
+    print("\nQuality Report Properties:")
+    properties_df = quality_report.get_properties()
+    if not properties_df.empty:
+        for _, row in properties_df.iterrows():
+            print(f"  {row['Property']}: {row['Score']*100:.2f}%")
+    else:
+        print("  No properties found in the quality report.")
+
+    # print("\nDetails for Column Shapes (example):")
+    # column_shapes_details = quality_report.get_details(property_name='Column Shapes')
+    # print(column_shapes_details.sort_values(by='Score').head())
+
+except Exception as e:
+    print(f"Could not run quality report: {e}")
+
+# Optional: Save the newly generated synthetic data
+# synthetic_data.to_csv('UNSW_NB15_sdv_synthetic_data_from_loaded_model.csv', index=False)
+# print("\nSynthetic data from loaded model saved to 'UNSW_NB15_sdv_synthetic_data_from_loaded_model.csv'")
+
+print("\n--- Script Finished ---")

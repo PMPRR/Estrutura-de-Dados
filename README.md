@@ -29,12 +29,12 @@ sudo docker run --rm --name my_cpp_application -d cpp_project
 Para rodar uma vez o código use o `app-run`, caso queria programar dentro do container use `app-dev`
 ```shell
 docker compose build app-run
-docker compose up app-run
+docker compose run --rm app-run NOME_DO_EXECUTAVEL
 ```
 ```shell
 docker compose build app-dev
 docker compose up app-dev -d
-docker exec -it CONTAINER_NUMBER bash
+docker compose exec -it app-dev bash
 ```
 ### Caso o docker Daemon NÂO estiver funcionando
 ```shell
