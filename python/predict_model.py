@@ -22,7 +22,6 @@ cat_cols = ["proto", "service", "state"]
 X = pd.get_dummies(X, columns=cat_cols)
 
 # === 6. Recarregar os dados de treino para garantir alinhamento de colunas ===
-# (sem alterar o código de treino)
 X_treino_temp = pd.read_csv("UNSW_NB15_training-set.csv") \
     .drop(columns=["id", "attack_cat", "label", "ct_state_ttl"])
 X_treino_temp = pd.get_dummies(X_treino_temp, columns=cat_cols)
