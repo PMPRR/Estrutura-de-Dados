@@ -17,6 +17,7 @@
 #include "network/data_receiver.h" // Your existing DataReceiver class
 #include "data.h"                  // The Data struct definition
 #include "essential/AVL.h"         // Include for AVL tree
+#include "essential/LinkedList.h"  // Include for DoublyLinkedList
 
 // Global atomic boolean to signal termination for all loops
 std::atomic<bool> keep_running(true);
@@ -103,16 +104,18 @@ int main() {
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
-    // --- Instantiate AVL Tree ---
+    // --- Instantiate Data Structures ---
     AVL avl_tree;
-    const int AVL_DS_ID = 1; // Corresponds to "AVL" in gui.py's data_structure_map
+    DoublyLinkedList doubly_linked_list; // Instantiate DoublyLinkedList
+    const int AVL_DS_ID = 1;             // Corresponds to "AVL" in gui.py's data_structure_map
+    const int LINKED_LIST_DS_ID = 2;     // Corresponds to "LINKED_LIST" in gui.py's data_structure_map
+
 
     // --- Setup DataReceiver (Subscriber to python_publisher) ---
     const std::string publisher_address = "tcp://python_publisher:5556";
     const std::string zmq_subscription_topic = "data_batch"; // Explicitly subscribe to 'data_batch'
     const std::string actual_data_prefix = "data_batch"; // DataReceiver expects this prefix for processing
 
-    // DataReceiver no longer needs to know about the AVL tree directly.
     DataReceiver data_collector(publisher_address, zmq_subscription_topic, actual_data_prefix);
 
     std::cout << "[DataCollector] Attempting to start..." << std::endl;
@@ -152,19 +155,25 @@ int main() {
         const Data* received_data_ptr = received_data_view.first;
         size_t current_received_count = received_data_view.second;
 
-        // Update master_data_store AND AVL tree (only if there's new data)
+        // Update master_data_store AND AVL tree & LinkedList (only if there's new data)
         if (current_received_count > last_processed_data_collector_count) {
-            std::cout << "[Main] New data received from DataReceiver. Adding to master data store and AVL tree." << std::endl;
+            std::cout << "[Main] New data received from DataReceiver. Adding to master data store, AVL tree, and Linked List." << std::endl;
             for (size_t i = last_processed_data_collector_count; i < current_received_count; ++i) {
                 // Deep copy the Data object from DataReceiver's internal array
                 // and store it in a unique_ptr within master_data_store.
                 master_data_store.push_back(std::make_unique<Data>(received_data_ptr[i]));
-                // Insert the raw pointer to this *stably allocated* Data object into the AVL tree.
-                avl_tree.insert(master_data_store.back().get()); 
+                // Get raw pointer to this *stably allocated* Data object.
+                Data* data_to_insert = master_data_store.back().get();
+
+                // Insert into AVL tree
+                avl_tree.insert(data_to_insert); 
+                // Insert into DoublyLinkedList
+                doubly_linked_list.append(data_to_insert);
+
             }
             last_processed_data_collector_count = current_received_count;
             std::cout << "[Main] Master data store size: " << master_data_store.size() << " items." << std::endl;
-            std::cout << "[Main] AVL tree updated with new data." << std::endl;
+            std::cout << "[Main] AVL tree and Linked List updated with new data." << std::endl;
         }
 
         // --- Handle GUI requests (REP socket) ---
@@ -247,8 +256,16 @@ int main() {
                         } else {
                             reply_str = "No data with ID " + std::to_string(id_to_query) + " found in AVL tree.";
                         }
-                    } else {
-                        reply_str = "Query by ID for Data Structure ID " + std::to_string(ds_id) + " (other than AVL) NOT IMPLEMENTED yet.";
+                    } else if (ds_id == LINKED_LIST_DS_ID) { // Check if the requested DS is Linked List
+                        const Data* found_data = doubly_linked_list.findById(id_to_query);
+                        if (found_data != nullptr) {
+                            reply_str = format_data_as_table(*found_data);
+                        } else {
+                            reply_str = "No data with ID " + std::to_string(id_to_query) + " found in Linked List.";
+                        }
+                    }
+                    else {
+                        reply_str = "Query by ID for Data Structure ID " + std::to_string(ds_id) + " (other than AVL/LinkedList) NOT IMPLEMENTED yet.";
                     }
                 }
             } else if (request_str.rfind("REMOVE_DATA_BY_ID ", 0) == 0) {
@@ -279,34 +296,42 @@ int main() {
                 }
 
                 if (parse_success) {
-                    if (ds_id == AVL_DS_ID) { // Check if the requested DS is AVL
-                        // Attempt to remove from AVL tree first
-                        // AVL's removeById will deallocate the node, but not the Data* itself.
-                        // The Data* memory is owned by master_data_store.
+                    bool removed_from_ds = false;
+                    if (ds_id == AVL_DS_ID) { // Remove from AVL
                         AVL::Node_AVL* found_node_before_remove = avl_tree.queryById(id_to_remove);
-
                         if (found_node_before_remove && found_node_before_remove->data) {
                             avl_tree.removeById(id_to_remove);
-
-                            // Now, remove the unique_ptr from master_data_store to free the Data object
-                            // This iterates and erases. It's O(N) but necessary for unique_ptr ownership.
-                            auto it = std::remove_if(master_data_store.begin(), master_data_store.end(),
-                                [&](const std::unique_ptr<Data>& data_ptr) {
-                                    return data_ptr->id == id_to_remove;
-                                });
-                            if (it != master_data_store.end()) {
-                                master_data_store.erase(it, master_data_store.end());
-                                reply_str = "Data with ID " + std::to_string(id_to_remove) + " successfully removed from AVL tree and master store.";
-                                std::cout << "[Main] Data with ID " << id_to_remove << " removed." << std::endl;
-                            } else {
-                                // This case should ideally not happen if found in AVL tree, but good for robustness
-                                reply_str = "Error: Data with ID " + std::to_string(id_to_remove) + " removed from AVL tree but not found in master store for deletion.";
-                            }
-                        } else {
-                            reply_str = "No data with ID " + std::to_string(id_to_remove) + " found in AVL tree to remove.";
+                            removed_from_ds = true;
+                        }
+                    } else if (ds_id == LINKED_LIST_DS_ID) { // Remove from Linked List
+                        if (doubly_linked_list.findById(id_to_remove) != nullptr) {
+                            doubly_linked_list.removeById(id_to_remove);
+                            removed_from_ds = true;
                         }
                     } else {
-                        reply_str = "Remove by ID for Data Structure ID " + std::to_string(ds_id) + " (other than AVL) NOT IMPLEMENTED yet.";
+                        reply_str = "Remove by ID for Data Structure ID " + std::to_string(ds_id) + " (other than AVL/LinkedList) NOT IMPLEMENTED yet.";
+                    }
+
+                    if (removed_from_ds) {
+                        // Find and remove the unique_ptr from master_data_store
+                        // This uses std::remove_if with a lambda that captures id_to_remove.
+                        // It moves elements to the end and returns an iterator to the new end.
+                        // Then erase removes the range.
+                        auto it = std::remove_if(master_data_store.begin(), master_data_store.end(),
+                            [&](const std::unique_ptr<Data>& data_ptr) {
+                                return data_ptr->id == id_to_remove;
+                            });
+                        if (it != master_data_store.end()) {
+                            master_data_store.erase(it, master_data_store.end());
+                            reply_str = "Data with ID " + std::to_string(id_to_remove) + " successfully removed from selected data structure and master store.";
+                            std::cout << "[Main] Data with ID " << id_to_remove << " removed." << std::endl;
+                        } else {
+                            // This case implies data was in DS but not in master_data_store, which is an inconsistency.
+                            reply_str = "Error: Data with ID " + std::to_string(id_to_remove) + " removed from data structure but not found in master store for deletion.";
+                            std::cerr << "[Main] Inconsistency: Data with ID " << id_to_remove << " removed from DS but not in master_data_store." << std::endl;
+                        }
+                    } else if (reply_str.empty()) { // If not removed and no other error message set
+                        reply_str = "No data with ID " + std::to_string(id_to_remove) + " found in selected data structure to remove.";
                     }
                 }
             } else if (request_str.rfind("GET_STATS_SLOAD ", 0) == 0 || request_str.rfind("GET_STATS_CATEGORY_BREAKDOWN ", 0) == 0) { 
