@@ -7,14 +7,16 @@
 #include <atomic>       // For std::atomic
 #include <sstream>      // For std::ostringstream
 #include <iomanip>      // For std::fixed, std::setprecision
-#include <algorithm>    // For std::min, std::find_if (included, but not used for query by ID in this version)
-#include <cstring>
+#include <algorithm>    // For std::min
+#include <cstring>      // For strlen, strncmp
+#include <memory>       // For std::unique_ptr, std::make_unique
 
 #include <zmq.hpp>      // For ZeroMQ C++ bindings (zmq::context_t, zmq::socket_t, zmq::message_t, zmq::error_t)
 #include <zmq.h>        // For ZMQ_DONTWAIT (C-style ZMQ constants)
 
 #include "network/data_receiver.h" // Your existing DataReceiver class
 #include "data.h"                  // The Data struct definition
+#include "essential/AVL.h"         // Include for AVL tree
 
 // Global atomic boolean to signal termination for all loops
 std::atomic<bool> keep_running(true);
@@ -27,8 +29,7 @@ void signal_handler(int signum) {
     }
 }
 
-// Helper function to format a Data struct into a string
-// This function takes a const reference to Data.
+// Helper function to format a Data struct into a concise string (for last 3 items display)
 std::string format_data_for_reply(const Data& data_item) {
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(2); // Set precision for float values
@@ -42,17 +43,76 @@ std::string format_data_for_reply(const Data& data_item) {
     return oss.str();
 }
 
+// New helper function to format a Data struct into a detailed table string
+std::string format_data_as_table(const Data& data_item) {
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(4); // Use higher precision for floats
+
+    oss << "--- Data Record Details (ID: " << data_item.id << ") ---\n";
+    oss << "ID: " << data_item.id << "\n";
+    oss << "Duration (s): " << data_item.dur << "\n";
+    oss << "Rate (pkts/s): " << data_item.rate << "\n";
+    oss << "Source Load (bytes/s): " << data_item.sload << "\n";
+    oss << "Dest Load (bytes/s): " << data_item.dload << "\n";
+    oss << "Source Inter-arrival (s): " << data_item.sinpkt << "\n";
+    oss << "Dest Inter-arrival (s): " << data_item.dinpkt << "\n";
+    oss << "Source Jitter (ms): " << data_item.sjit << "\n";
+    oss << "Dest Jitter (ms): " << data_item.djit << "\n";
+    oss << "TCP RTT (s): " << data_item.tcprtt << "\n";
+    oss << "SYN-ACK Time (s): " << data_item.synack << "\n";
+    oss << "ACK/Data Time (s): " << data_item.ackdat << "\n";
+    oss << "Source Packets: " << data_item.spkts << "\n";
+    oss << "Dest Packets: " << data_item.dpkts << "\n";
+    oss << "Source Bytes: " << data_item.sbytes << "\n";
+    oss << "Dest Bytes: " << data_item.dbytes << "\n";
+    oss << "Source TTL: " << static_cast<int>(data_item.sttl) << "\n";
+    oss << "Dest TTL: " << static_cast<int>(data_item.dttl) << "\n";
+    oss << "Source Loss: " << data_item.sloss << "\n";
+    oss << "Dest Loss:  " << data_item.dloss << "\n"; // Added space for alignment
+    oss << "Source Win: " << data_item.swin << "\n";
+    oss << "Source TCP Seq Base: " << data_item.stcpb << "\n";
+    oss << "Dest TCP Seq Base: " << data_item.dtcpb << "\n";
+    oss << "Dest Win: " << data_item.dwin << "\n";
+    oss << "Source Mean Packet Size: " << data_item.smean << "\n";
+    oss << "Dest Mean Packet Size: " << data_item.dmean << "\n";
+    oss << "Transaction Depth: " << data_item.trans_depth << "\n";
+    oss << "Response Body Length: " << data_item.response_body_len << "\n";
+    oss << "Ct Srv Src: " << data_item.ct_srv_src << "\n";
+    oss << "Ct Dst LTM: " << data_item.ct_dst_ltm << "\n";
+    oss << "Ct Src Dport LTM: " << data_item.ct_src_dport_ltm << "\n";
+    oss << "Ct Dst Sport LTM: " << data_item.ct_dst_sport_ltm << "\n";
+    oss << "Ct Dst Src LTM: " << data_item.ct_dst_src_ltm << "\n";
+    oss << "Ct FTP Cmd: " << data_item.ct_ftp_cmd << "\n";
+    oss << "Ct FLW HTTP Mthd: " << data_item.ct_flw_http_mthd << "\n";
+    oss << "Ct Src LTM: " << data_item.ct_src_ltm << "\n";
+    oss << "Ct Srv Dst: " << data_item.ct_srv_dst << "\n";
+    oss << "Is FTP Login: " << (data_item.is_ftp_login ? "True" : "False") << "\n";
+    oss << "Is SM IPs Ports: " << (data_item.is_sm_ips_ports ? "True" : "False") << "\n";
+    oss << "Label (Attack): " << (data_item.label ? "True" : "False") << "\n";
+    oss << "Protocolo: " << static_cast<int>(data_item.proto) << " (Enum Value)\n";
+    oss << "State: " << static_cast<int>(data_item.state) << " (Enum Value)\n";
+    oss << "Attack Category: " << static_cast<int>(data_item.attack_category) << " (Enum Value)\n";
+    oss << "Service: " << static_cast<int>(data_item.service) << " (Enum Value)\n";
+
+    return oss.str();
+}
+
 
 int main() {
     // Register signal SIGINT and SIGTERM handlers
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
+    // --- Instantiate AVL Tree ---
+    AVL avl_tree;
+    const int AVL_DS_ID = 1; // Corresponds to "AVL" in gui.py's data_structure_map
+
     // --- Setup DataReceiver (Subscriber to python_publisher) ---
     const std::string publisher_address = "tcp://python_publisher:5556";
     const std::string zmq_subscription_topic = "data_batch"; // Explicitly subscribe to 'data_batch'
     const std::string actual_data_prefix = "data_batch"; // DataReceiver expects this prefix for processing
 
+    // DataReceiver no longer needs to know about the AVL tree directly.
     DataReceiver data_collector(publisher_address, zmq_subscription_topic, actual_data_prefix);
 
     std::cout << "[DataCollector] Attempting to start..." << std::endl;
@@ -78,40 +138,51 @@ int main() {
         return 1;
     }
 
-    // --- Master Data Store: std::vector to hold all collected Data objects ---
-    std::vector<Data> master_data_store;
+    // --- Master Data Store: std::vector of unique_ptrs to hold all collected Data objects ---
+    // This vector will own the Data objects, ensuring their memory addresses are stable.
+    std::vector<std::unique_ptr<Data>> master_data_store;
     size_t last_processed_data_collector_count = 0; // To track new data from DataReceiver
 
     int timeout_log_counter = 0;
 
     while (keep_running.load()) {
         // --- Process newly received data from DataReceiver ---
-        std::vector<Data> received_data_from_collector = data_collector.getCollectedData();
+        // Get a shallow view (pointer and count) of the data from DataReceiver's internal array.
+        std::pair<const Data*, size_t> received_data_view = data_collector.getCollectedData();
+        const Data* received_data_ptr = received_data_view.first;
+        size_t current_received_count = received_data_view.second;
 
-        if (received_data_from_collector.size() > last_processed_data_collector_count) {
-            std::cout << "[Main] New data received from DataReceiver. Adding to master data store." << std::endl;
-            for (size_t i = last_processed_data_collector_count; i < received_data_from_collector.size(); ++i) {
-                master_data_store.push_back(received_data_from_collector[i]);
+        // Update master_data_store AND AVL tree (only if there's new data)
+        if (current_received_count > last_processed_data_collector_count) {
+            std::cout << "[Main] New data received from DataReceiver. Adding to master data store and AVL tree." << std::endl;
+            for (size_t i = last_processed_data_collector_count; i < current_received_count; ++i) {
+                // Deep copy the Data object from DataReceiver's internal array
+                // and store it in a unique_ptr within master_data_store.
+                master_data_store.push_back(std::make_unique<Data>(received_data_ptr[i]));
+                // Insert the raw pointer to this *stably allocated* Data object into the AVL tree.
+                avl_tree.insert(master_data_store.back().get()); 
             }
-            last_processed_data_collector_count = received_data_from_collector.size();
+            last_processed_data_collector_count = current_received_count;
             std::cout << "[Main] Master data store size: " << master_data_store.size() << " items." << std::endl;
+            std::cout << "[Main] AVL tree updated with new data." << std::endl;
         }
 
         // --- Handle GUI requests (REP socket) ---
         zmq::message_t request_msg;
         bool received_rep_request = false;
         try {
+            // Non-blocking receive (ZMQ_DONTWAIT)
             if (rep_socket.recv(&request_msg, ZMQ_DONTWAIT)) {
                  received_rep_request = true;
             } else {
                 received_rep_request = false;
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Sleep briefly if no message
             }
         } catch (const zmq::error_t& e) {
             if (e.num() == ETERM) {
                 std::cerr << "[REP Server] Context terminated during recv, exiting loop." << std::endl;
                 break;
-            } else if (e.num() == EAGAIN) {
+            } else if (e.num() == EAGAIN) { // No message received
                 received_rep_request = false;
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             } else {
@@ -127,7 +198,7 @@ int main() {
 
             std::string reply_str;
 
-            if (request_str == "GET_DATA") {
+            if (request_str == "GET_DATA") { // Original "Query Last 3 Data Items"
                 if (master_data_store.empty()) {
                     reply_str = "No data collected yet.";
                 } else {
@@ -137,16 +208,15 @@ int main() {
                     
                     size_t start_index = master_data_store.size() > 3 ? master_data_store.size() - 3 : 0;
                     for (size_t i = start_index; i < master_data_store.size(); ++i) {
-                        oss_reply << (i - start_index + 1) << ". " << format_data_for_reply(master_data_store[i]) << "\n";
+                        // Access Data object through unique_ptr
+                        oss_reply << (i - start_index + 1) << ". " << format_data_for_reply(*master_data_store[i]) << "\n";
                     }
                     reply_str = oss_reply.str();
                 }
-            } else if (request_str.rfind("QUERY_ID ", 0) == 0) {
-                // Expected format: "QUERY_DATA_BY_ID <ID> <DS_ID>"
-                size_t prefix_len = strlen("QUERY_DATA_BY_ID "); // Length of "QUERY_DATA_BY_ID "
-                std::string remaining_str = request_str.substr(prefix_len); // This will be "<ID> <DS_ID>" e.g., "123 1"
+            } else if (request_str.rfind("QUERY_DATA_BY_ID ", 0) == 0) { 
+                size_t prefix_len = strlen("QUERY_DATA_BY_ID "); 
+                std::string remaining_str = request_str.substr(prefix_len); 
 
-                // Find the space that separates the ID from the DS_ID
                 size_t space_pos = remaining_str.find(' ');
 
                 uint32_t id_to_query = 0;
@@ -154,16 +224,15 @@ int main() {
 
                 bool parse_success = true;
                 if (space_pos == std::string::npos) {
-                    // Error: Malformed request, missing DS_ID
                     reply_str = "Error: QUERY_DATA_BY_ID requires both an ID and a Data Structure ID.";
                     parse_success = false;
                 } else {
-                    std::string id_str = remaining_str.substr(0, space_pos); // Extracts "123"
-                    std::string ds_id_str = remaining_str.substr(space_pos + 1); // Extracts "1"
+                    std::string id_str = remaining_str.substr(0, space_pos); 
+                    std::string ds_id_str = remaining_str.substr(space_pos + 1); 
 
                     try {
-                        id_to_query = std::stoul(id_str); // Convert ID string to unsigned long
-                        ds_id = std::stoi(ds_id_str);     // Convert DS_ID string to int
+                        id_to_query = std::stoul(id_str); 
+                        ds_id = std::stoi(ds_id_str);     
                     } catch (const std::exception& e) {
                         reply_str = "Error parsing ID or Data Structure ID for QUERY_DATA_BY_ID: " + std::string(e.what());
                         parse_success = false;
@@ -171,15 +240,20 @@ int main() {
                 }
 
                 if (parse_success) {
-                    // If parsing was successful, you can now use id_to_query and ds_id
-                    // For now, we'll still send "NOT IMPLEMENTED", but show the parsed values.
-                    reply_str = "QUERY_DATA_BY_ID functionality NOT IMPLEMENTED yet. Parsed: ID=" + std::to_string(id_to_query) + ", DS_ID=" + std::to_string(ds_id);
+                    if (ds_id == AVL_DS_ID) { // Check if the requested DS is AVL
+                        AVL::Node_AVL* found_node = avl_tree.queryById(id_to_query);
+                        if (found_node != nullptr && found_node->data != nullptr) {
+                            reply_str = format_data_as_table(*found_node->data);
+                        } else {
+                            reply_str = "No data with ID " + std::to_string(id_to_query) + " found in AVL tree.";
+                        }
+                    } else {
+                        reply_str = "Query by ID for Data Structure ID " + std::to_string(ds_id) + " (other than AVL) NOT IMPLEMENTED yet.";
+                    }
                 }
-
-
-            } else if (request_str.rfind("REMOVE_DATA ", 0) == 0) {
-                reply_str = "REMOVE_DATA functionality NOT IMPLEMENTED yet.";
-            } else if (request_str.rfind("GET_STATS ", 0) == 0) {
+            } else if (request_str.rfind("REMOVE_DATA_BY_ID ", 0) == 0) { 
+                reply_str = "REMOVE_DATA_BY_ID functionality NOT IMPLEMENTED yet.";
+            } else if (request_str.rfind("GET_STATS_SLOAD ", 0) == 0 || request_str.rfind("GET_STATS_CATEGORY_BREAKDOWN ", 0) == 0) { 
                 reply_str = "GET_STATS functionality NOT IMPLEMENTED yet.";
             } else {
                 reply_str = "Unknown command: " + request_str;
@@ -193,14 +267,16 @@ int main() {
             }
             std::cout << "[REP Server] Sent reply for request: \"" << request_str << "\"" << std::endl;
         } else if (!received_rep_request) {
+            // Log timeout messages less frequently to avoid excessive console output
             if (timeout_log_counter < 5 || timeout_log_counter % 60 == 0) {
-                 // Debug: std::cout << "[Debug] REP socket: No GUI request. Loop count: " << timeout_log_counter << std::endl;
+                 // std::cout << "[Debug] REP socket: No GUI request. Loop count: " << timeout_log_counter << std::endl;
             }
             timeout_log_counter++;
         }
     }
 
     std::cout << "[REP Server] Shutting down..." << std::endl;
+    // The zmq objects (rep_context, rep_socket) will be destroyed automatically when main exits.
     std::cout << "[REP Server] Resources will be released." << std::endl;
 
     std::cout << "[DataCollector] Signaling to stop..." << std::endl;
@@ -211,3 +287,4 @@ int main() {
     std::cout << "Application shut down gracefully." << std::endl;
     return 0;
 }
+
