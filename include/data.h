@@ -237,7 +237,7 @@ struct __attribute__((packed)) Data {
     uint32_t    response_body_len;  ///< Length (bytes) of response body (if any)
 
     uint16_t    ct_srv_src;         ///< Count of flows with same (service, source IP) in last 100
-    uint16_t    ct_state_ttl;       ///< Count of flows with same (state, TTL) in last 100
+    //uint16_t    ct_state_ttl;       ///< Count of flows with same (state, TTL) in last 100
     uint16_t    ct_dst_ltm;         ///< Count of connections to same destination in last 1000
     uint16_t    ct_src_dport_ltm;   ///< Count of connections from same source & destination port in last 1000
     uint16_t    ct_dst_sport_ltm;   ///< Count of connections to same destination & source port in last 1000
@@ -271,7 +271,7 @@ struct __attribute__((packed)) Data {
         uint8_t sttl, uint8_t dttl, uint16_t sloss, uint16_t dloss,
         uint16_t swin, uint32_t stcpb, uint32_t dtcpb, uint16_t dwin,
         uint16_t smean, uint16_t dmean, uint16_t trans_depth, uint32_t response_body_len,
-        uint16_t ct_srv_src, uint16_t ct_state_ttl, uint16_t ct_dst_ltm,
+        uint16_t ct_srv_src, /*uint16_t ct_state_ttl,*/ uint16_t ct_dst_ltm,
         uint16_t ct_src_dport_ltm, uint16_t ct_dst_sport_ltm, uint16_t ct_dst_src_ltm,
         uint16_t ct_ftp_cmd, uint16_t ct_flw_http_mthd,
         uint16_t ct_src_ltm, uint16_t ct_srv_dst,
@@ -288,7 +288,7 @@ struct __attribute__((packed)) Data {
         swin(swin), stcpb(stcpb), dtcpb(dtcpb), dwin(dwin),
         smean(smean), dmean(dmean),
         trans_depth(trans_depth), response_body_len(response_body_len),
-        ct_srv_src(ct_srv_src), ct_state_ttl(ct_state_ttl), ct_dst_ltm(ct_dst_ltm),
+        ct_srv_src(ct_srv_src), /*ct_state_ttl(ct_state_ttl),*/ ct_dst_ltm(ct_dst_ltm),
         ct_src_dport_ltm(ct_src_dport_ltm), ct_dst_sport_ltm(ct_dst_sport_ltm), ct_dst_src_ltm(ct_dst_src_ltm),
         ct_ftp_cmd(ct_ftp_cmd), ct_flw_http_mthd(ct_flw_http_mthd),
         ct_src_ltm(ct_src_ltm), ct_srv_dst(ct_srv_dst),

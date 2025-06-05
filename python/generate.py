@@ -37,13 +37,12 @@ DATA_STRUCT_FORMAT = (
     "B" * 2 +  # 2 uint8_t (sttl, dttl)
     "H" * 2 +  # 2 uint16_t (sloss, dloss)
     "H" +  # 1 uint16_t (swin)
-    "I" +  # 1 uint32_t (stcpb)
-    "I" +  # 1 uint32_t (dtcpb)
+    "I" * 2 +  # 2 uint32_t (stcpb, dtcpb)
     "H" +  # 1 uint16_t (dwin)
     "H" * 2 +  # 2 uint16_t (smean, dmean)
     "H" +  # 1 uint16_t (trans_depth)
     "I" +  # 1 uint32_t (response_body_len)
-    "H" * 6 +  # 6 uint16_t (ct_srv_src, ct_state_ttl, ct_dst_ltm, ct_src_dport_ltm, ct_dst_sport_ltm, ct_dst_src_ltm)
+    "H" * 5 +  # 5 uint16_t (ct_srv_src, ct_dst_ltm, ct_src_dport_ltm, ct_dst_sport_ltm, ct_dst_src_ltm) - ct_state_ttl removed
     "H" * 4 +  # 4 uint16_t (ct_ftp_cmd, ct_flw_http_mthd, ct_src_ltm, ct_srv_dst)
     "?" * 3 +  # 3 bools (is_ftp_login, is_sm_ips_ports, label)
     "B" * 4   # 4 uint8_t (enums: proto, state, attack_cat, service)
@@ -60,7 +59,8 @@ expected_df_columns_in_order = [
     'tcprtt', 'synack', 'ackdat', 'spkts', 'dpkts', 'sbytes', 'dbytes',
     'sttl', 'dttl', 'sloss', 'dloss', 'swin', 'stcpb', 'dtcpb', 'dwin',
     'smean', 'dmean', 'trans_depth', 'response_body_len', 'ct_srv_src',
-    'ct_state_ttl', 'ct_dst_ltm', 'ct_src_dport_ltm', 'ct_dst_sport_ltm',
+    # 'ct_state_ttl', # Removed
+    'ct_dst_ltm', 'ct_src_dport_ltm', 'ct_dst_sport_ltm',
     'ct_dst_src_ltm', 'ct_ftp_cmd', 'ct_flw_http_mthd', 'ct_src_ltm',
     'ct_srv_dst', 'is_ftp_login', 'is_sm_ips_ports', 'label',
     'proto', 'state', 'attack_cat', 'service' 
@@ -109,7 +109,7 @@ for member in Servico:
         elif SERVICO_MAP[hyphenated_alias_key] != member.value:
             print(f"  WARNING: Alias conflict for service. Hyphenated key '{hyphenated_alias_key}' "
                   f"(for enum {member.name}) already exists in SERVICO_MAP and maps to a different value "
-                  f"({SERVICO_MAP[hyphenated_alias_key]}). Not overwriting with value {member.value}.")
+                  f"({SERVICO_MAP[hyphenated_alias_key]}). Not overriding for Servico.NOTHING.")
 print("Python: Finished adding hyphenated aliases for Servico.")
 
 if hasattr(Servico, 'NOTHING'):
@@ -256,13 +256,14 @@ def python_pub_publisher():
                     for i in range(24, 26): _data_values.append(safe_numeric_conversion(row.get(expected_df_columns_in_order[i]), int, field_name=expected_df_columns_in_order[i], min_val=0, max_val=U16_MAX))
                     _data_values.append(safe_numeric_conversion(row.get(expected_df_columns_in_order[26]), int, field_name=expected_df_columns_in_order[26], min_val=0, max_val=U16_MAX))
                     _data_values.append(safe_numeric_conversion(row.get(expected_df_columns_in_order[27]), int, field_name=expected_df_columns_in_order[27], min_val=0))
-                    for i in range(28, 34): _data_values.append(safe_numeric_conversion(row.get(expected_df_columns_in_order[i]), int, field_name=expected_df_columns_in_order[i], min_val=0, max_val=U16_MAX))
-                    for i in range(34, 38): _data_values.append(safe_numeric_conversion(row.get(expected_df_columns_in_order[i]), int, field_name=expected_df_columns_in_order[i], min_val=0, max_val=U16_MAX))
-                    for i in range(38, 41): _data_values.append(safe_numeric_conversion(row.get(expected_df_columns_in_order[i]), bool, field_name=expected_df_columns_in_order[i]))
-                    _data_values.append(safe_categorical_to_int(row.get(expected_df_columns_in_order[41]), PROTOCOLO_MAP, field_name=expected_df_columns_in_order[41]))
-                    _data_values.append(safe_categorical_to_int(row.get(expected_df_columns_in_order[42]), STATE_MAP, field_name=expected_df_columns_in_order[42]))
-                    _data_values.append(safe_categorical_to_int(row.get(expected_df_columns_in_order[43]), ATTACK_CAT_MAP, field_name=expected_df_columns_in_order[43])) 
-                    _data_values.append(safe_categorical_to_int(row.get(expected_df_columns_in_order[44]), SERVICO_MAP, field_name=expected_df_columns_in_order[44]))
+                    # Packing for 'ct_srv_src' to 'ct_dst_src_ltm' (5 fields) - ct_state_ttl was at index 29, now skipped
+                    for i in range(28, 33): _data_values.append(safe_numeric_conversion(row.get(expected_df_columns_in_order[i]), int, field_name=expected_df_columns_in_order[i], min_val=0, max_val=U16_MAX))
+                    for i in range(33, 37): _data_values.append(safe_numeric_conversion(row.get(expected_df_columns_in_order[i]), int, field_name=expected_df_columns_in_order[i], min_val=0, max_val=U16_MAX))
+                    for i in range(37, 40): _data_values.append(safe_numeric_conversion(row.get(expected_df_columns_in_order[i]), bool, field_name=expected_df_columns_in_order[i]))
+                    _data_values.append(safe_categorical_to_int(row.get(expected_df_columns_in_order[40]), PROTOCOLO_MAP, field_name=expected_df_columns_in_order[40]))
+                    _data_values.append(safe_categorical_to_int(row.get(expected_df_columns_in_order[41]), STATE_MAP, field_name=expected_df_columns_in_order[41]))
+                    _data_values.append(safe_categorical_to_int(row.get(expected_df_columns_in_order[42]), ATTACK_CAT_MAP, field_name=expected_df_columns_in_order[42])) 
+                    _data_values.append(safe_categorical_to_int(row.get(expected_df_columns_in_order[43]), SERVICO_MAP, field_name=expected_df_columns_in_order[43]))
                     data_to_pack_tuple = tuple(_data_values)
                     if len(data_to_pack_tuple) != len(expected_df_columns_in_order):
                         print(f"Python: CRITICAL PACKING ERROR for row index {index}, ID {current_row_id}: "
@@ -311,8 +312,26 @@ def python_pub_publisher():
         print("Python: Python PUB publisher closed.")
 
 if __name__ == "__main__":
-    EXPECTED_FIELD_COUNT = 45 
-    EXPECTED_STRUCT_SIZE_BYTES = 115 
+    # Recalculate based on the new struct format (1 int, 11 floats, 2 uint16, 2 uint32, 2 uint8, 2 uint16, 1 uint16, 2 uint32, 1 uint16, 2 uint16, 1 uint16, 1 uint32, 5 uint16, 4 uint16, 3 bools, 4 uint8)
+    # int: 4 bytes
+    # float: 4 bytes * 11 = 44 bytes
+    # uint16: 2 bytes * 2 = 4 bytes
+    # uint32: 4 bytes * 2 = 8 bytes
+    # uint8: 1 byte * 2 = 2 bytes
+    # uint16: 2 bytes * 2 = 4 bytes
+    # uint16: 2 bytes * 1 = 2 bytes
+    # uint32: 4 bytes * 2 = 8 bytes
+    # uint16: 2 bytes * 1 = 2 bytes
+    # uint16: 2 bytes * 2 = 4 bytes
+    # uint16: 2 bytes * 1 = 2 bytes
+    # uint32: 4 bytes * 1 = 4 bytes
+    # uint16: 2 bytes * 5 = 10 bytes (ct_srv_src, ct_dst_ltm, ct_src_dport_ltm, ct_dst_sport_ltm, ct_dst_src_ltm)
+    # uint16: 2 bytes * 4 = 8 bytes
+    # bool: 1 byte * 3 = 3 bytes
+    # uint8: 1 byte * 4 = 4 bytes
+    # Total = 4 + 44 + 4 + 8 + 2 + 4 + 2 + 8 + 2 + 4 + 2 + 4 + 10 + 8 + 3 + 4 = 113 bytes
+    EXPECTED_FIELD_COUNT = 44 # Reduced by 1
+    EXPECTED_STRUCT_SIZE_BYTES = 113 # Recalculated
 
     if len(expected_df_columns_in_order) != EXPECTED_FIELD_COUNT:
          print(f"CRITICAL PYTHON SETUP ERROR: 'expected_df_columns_in_order' has {len(expected_df_columns_in_order)} items, but EXPECTED_FIELD_COUNT is {EXPECTED_FIELD_COUNT}. These must match.")
@@ -325,3 +344,5 @@ if __name__ == "__main__":
         sys.exit(1)
 
     python_pub_publisher()
+
+
