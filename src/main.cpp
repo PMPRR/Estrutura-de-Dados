@@ -7,7 +7,7 @@
 #include <atomic>       // For std::atomic
 #include <sstream>      // For std::ostringstream
 #include <iomanip>      // For std::fixed, std::setprecision
-#include <algorithm>    // For std::min
+#include <algorithm>    // For std::min, std::remove_if
 #include <cstring>      // For strlen, strncmp
 #include <memory>       // For std::unique_ptr, std::make_unique
 
@@ -251,8 +251,64 @@ int main() {
                         reply_str = "Query by ID for Data Structure ID " + std::to_string(ds_id) + " (other than AVL) NOT IMPLEMENTED yet.";
                     }
                 }
-            } else if (request_str.rfind("REMOVE_DATA_BY_ID ", 0) == 0) { 
-                reply_str = "REMOVE_DATA_BY_ID functionality NOT IMPLEMENTED yet.";
+            } else if (request_str.rfind("REMOVE_DATA_BY_ID ", 0) == 0) {
+                // Expected format: "REMOVE_DATA_BY_ID <ID> <DS_ID>"
+                size_t prefix_len = strlen("REMOVE_DATA_BY_ID "); 
+                std::string remaining_str = request_str.substr(prefix_len); 
+
+                size_t space_pos = remaining_str.find(' ');
+
+                uint32_t id_to_remove = 0;
+                int ds_id = 0;
+
+                bool parse_success = true;
+                if (space_pos == std::string::npos) {
+                    reply_str = "Error: REMOVE_DATA_BY_ID requires both an ID and a Data Structure ID.";
+                    parse_success = false;
+                } else {
+                    std::string id_str = remaining_str.substr(0, space_pos); 
+                    std::string ds_id_str = remaining_str.substr(space_pos + 1); 
+
+                    try {
+                        id_to_remove = std::stoul(id_str); 
+                        ds_id = std::stoi(ds_id_str);     
+                    } catch (const std::exception& e) {
+                        reply_str = "Error parsing ID or Data Structure ID for REMOVE_DATA_BY_ID: " + std::string(e.what());
+                        parse_success = false;
+                    }
+                }
+
+                if (parse_success) {
+                    if (ds_id == AVL_DS_ID) { // Check if the requested DS is AVL
+                        // Attempt to remove from AVL tree first
+                        // AVL's removeById will deallocate the node, but not the Data* itself.
+                        // The Data* memory is owned by master_data_store.
+                        AVL::Node_AVL* found_node_before_remove = avl_tree.queryById(id_to_remove);
+
+                        if (found_node_before_remove && found_node_before_remove->data) {
+                            avl_tree.removeById(id_to_remove);
+
+                            // Now, remove the unique_ptr from master_data_store to free the Data object
+                            // This iterates and erases. It's O(N) but necessary for unique_ptr ownership.
+                            auto it = std::remove_if(master_data_store.begin(), master_data_store.end(),
+                                [&](const std::unique_ptr<Data>& data_ptr) {
+                                    return data_ptr->id == id_to_remove;
+                                });
+                            if (it != master_data_store.end()) {
+                                master_data_store.erase(it, master_data_store.end());
+                                reply_str = "Data with ID " + std::to_string(id_to_remove) + " successfully removed from AVL tree and master store.";
+                                std::cout << "[Main] Data with ID " << id_to_remove << " removed." << std::endl;
+                            } else {
+                                // This case should ideally not happen if found in AVL tree, but good for robustness
+                                reply_str = "Error: Data with ID " + std::to_string(id_to_remove) + " removed from AVL tree but not found in master store for deletion.";
+                            }
+                        } else {
+                            reply_str = "No data with ID " + std::to_string(id_to_remove) + " found in AVL tree to remove.";
+                        }
+                    } else {
+                        reply_str = "Remove by ID for Data Structure ID " + std::to_string(ds_id) + " (other than AVL) NOT IMPLEMENTED yet.";
+                    }
+                }
             } else if (request_str.rfind("GET_STATS_SLOAD ", 0) == 0 || request_str.rfind("GET_STATS_CATEGORY_BREAKDOWN ", 0) == 0) { 
                 reply_str = "GET_STATS functionality NOT IMPLEMENTED yet.";
             } else {
