@@ -2,16 +2,14 @@
 #include <string>
 #include <vector>
 #include <cassert>
-#include "essential/HashTable.h"
-
-using namespace essential;
+#include <essential/HashTable.h> // Certifique-se de que este caminho está correto
 
 // Função para testar inserção, busca e remoção de muitos elementos
 void testManyElements() {
     const int N = 1000;
-    HashTable ht(127); // tamanho primo para espalhar melhor
+    essential::HashTable ht(127); // tamanho primo para espalhar melhor
 
-    // Inserir pares do tipo chave=“key42”, valor=“value42”
+    // Inserir pares do tipo chave="key42", valor="value42"
     for (int i = 0; i < N; ++i) {
         ht.insert("key" + std::to_string(i), "value" + std::to_string(i));
     }
@@ -58,7 +56,7 @@ void testManyElements() {
 
 // Teste de operações básicas
 void testBasic() {
-    HashTable ht(13);
+    essential::HashTable ht(13);
 
     ht.insert("nome", "Maria");
     ht.insert("cidade", "São Paulo");
