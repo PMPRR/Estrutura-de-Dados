@@ -55,4 +55,18 @@ Para compilar o projeto:
 cd build
 cmake .. && make
 ```
+## ROADMAP
+- [x] datastet escolhido (0.5)
+- [ ] implementar Linked List, AVL e Hashset (0.6)
+- [ ] implementar Cuckoo Hash e Segment Tree (1.0)
+- [ ] implementar Fibonacci Heap (0.3)
+- [ ] fazer interface gráfica (0.6)
+- [ ] benchmark (1)
+- [ ] predição por IA apartir do dataset (2)
+- [x] fazer a simulação (0.3)
+- [ ] fazer calculos estatisticos (0.3)
+- [ ] fazer mais alguma coisa (0.3)
+- [ ] estrutura de dado otimizada Cuckoo (1)
+- [ ] estrutura de dado otimizada Fibonaci Heap (0.3)
+- [ ] 5 testes difernetes em codições de restrição (1.5)
 
