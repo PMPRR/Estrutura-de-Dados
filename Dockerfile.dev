@@ -4,23 +4,24 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 SHELL ["/bin/bash", "-c"]
 
+ENV PATH="/app/bin:${PATH}"
+
 RUN apt-get update && apt-get -y --no-install-recommends install \
     build-essential \
-    gcc \
     curl \
     cmake \
     gdb \
     unzip \
-    ca-certificates && update-ca-certificates
+    ca-certificates \
+    libzmq3-dev \
+    pkg-config \
+    # Clean up apt cache to reduce image size
+    && update-ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 RUN mkdir build && \
-    mkdir bin && \
-    mkdir data 
-
-WORKDIR /app/data
-
-RUN curl -L -o data.zip https://www.kaggle.com/api/v1/datasets/download/mrwellsdavid/unsw-nb15 && unzip data.zip
+    mkdir bin 
 
 WORKDIR /app
