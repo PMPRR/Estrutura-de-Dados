@@ -8,6 +8,7 @@
 #include <sstream>      // For std::ostringstream
 #include <iomanip>      // For std::fixed, std::setprecision
 #include <algorithm>    // For std::min, std::find_if (included, but not used for query by ID in this version)
+#include <cstring>
 
 #include <zmq.hpp>      // For ZeroMQ C++ bindings (zmq::context_t, zmq::socket_t, zmq::message_t, zmq::error_t)
 #include <zmq.h>        // For ZMQ_DONTWAIT (C-style ZMQ constants)
@@ -141,8 +142,41 @@ int main() {
                     reply_str = oss_reply.str();
                 }
             } else if (request_str.rfind("QUERY_ID ", 0) == 0) {
-                // Regardless of the ID, respond with NOT IMPLEMENTED
-                reply_str = "QUERY_ID functionality NOT IMPLEMENTED yet.";
+                // Expected format: "QUERY_DATA_BY_ID <ID> <DS_ID>"
+                size_t prefix_len = strlen("QUERY_DATA_BY_ID "); // Length of "QUERY_DATA_BY_ID "
+                std::string remaining_str = request_str.substr(prefix_len); // This will be "<ID> <DS_ID>" e.g., "123 1"
+
+                // Find the space that separates the ID from the DS_ID
+                size_t space_pos = remaining_str.find(' ');
+
+                uint32_t id_to_query = 0;
+                int ds_id = 0;
+
+                bool parse_success = true;
+                if (space_pos == std::string::npos) {
+                    // Error: Malformed request, missing DS_ID
+                    reply_str = "Error: QUERY_DATA_BY_ID requires both an ID and a Data Structure ID.";
+                    parse_success = false;
+                } else {
+                    std::string id_str = remaining_str.substr(0, space_pos); // Extracts "123"
+                    std::string ds_id_str = remaining_str.substr(space_pos + 1); // Extracts "1"
+
+                    try {
+                        id_to_query = std::stoul(id_str); // Convert ID string to unsigned long
+                        ds_id = std::stoi(ds_id_str);     // Convert DS_ID string to int
+                    } catch (const std::exception& e) {
+                        reply_str = "Error parsing ID or Data Structure ID for QUERY_DATA_BY_ID: " + std::string(e.what());
+                        parse_success = false;
+                    }
+                }
+
+                if (parse_success) {
+                    // If parsing was successful, you can now use id_to_query and ds_id
+                    // For now, we'll still send "NOT IMPLEMENTED", but show the parsed values.
+                    reply_str = "QUERY_DATA_BY_ID functionality NOT IMPLEMENTED yet. Parsed: ID=" + std::to_string(id_to_query) + ", DS_ID=" + std::to_string(ds_id);
+                }
+
+
             } else if (request_str.rfind("REMOVE_DATA ", 0) == 0) {
                 reply_str = "REMOVE_DATA functionality NOT IMPLEMENTED yet.";
             } else if (request_str.rfind("GET_STATS ", 0) == 0) {
