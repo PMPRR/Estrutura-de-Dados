@@ -1,119 +1,121 @@
-#include <iostream>
-#include <vector>
+#include "CuckooHashTable.h"
 #include <cmath>
-#include <cstdlib>
-#include <ctime>
-using namespace std;
+#include <vector>
+#include <utility>
+#include <stdexcept>
 
-const int MAX_REHASHES = 10;
-class CuckooHash {
-private:
-    vector<int> table1, table2;
-    int size;
-    int numElements;
+CuckooHashTable::Entry::Entry() : occupied(false) {}
+CuckooHashTable::Entry::Entry(const Data& d) : data(d), occupied(true) {}
 
-    int hash1(int key) {
-        return key % size;
+CuckooHashTable::CuckooHashTable(size_t initial_capacity)
+    : capacity(initial_capacity), size(0) {
+    table1.resize(capacity);
+    table2.resize(capacity);
+    max_loop = std::log2(capacity) + 1;
+}
+
+size_t CuckooHashTable::hash1(uint32_t key) const {
+    return key % capacity;
+}
+
+size_t CuckooHashTable::hash2(uint32_t key) const {
+    return (key / capacity) % capacity;
+}
+
+void CuckooHashTable::rehash() {
+    size_t old_capacity = capacity;
+    capacity *= 2;
+    max_loop = std::log2(capacity) + 1;
+
+    std::vector<Entry> old_table1 = table1;
+    std::vector<Entry> old_table2 = table2;
+
+    table1.assign(capacity, Entry());
+    table2.assign(capacity, Entry());
+    size = 0;
+
+    for (const auto& entry : old_table1) {
+        if (entry.occupied) insert(entry.data);
     }
-
-    int hash2(int key) {
-        return (key / size) % size;
+    for (const auto& entry : old_table2) {
+        if (entry.occupied) insert(entry.data);
     }
+}
 
-    void rehash() {
-        cout << "Fazendo rehash ,tamanho limite atingido, expandindo tabela\n";
-        size *= 2;
-        vector<int> old1 = table1;
-        vector<int> old2 = table2;
+bool CuckooHashTable::insert(const Data& data) {
+    if (contains(data.id)) return false;
 
-        table1.assign(size, -1);
-        table2.assign(size, -1);
-        numElements = 0;
+    Data cur = data;
+    size_t loop_count = 0;
 
-        for (int key : old1) {
-            if (key != -1)
-                insert(key);
-        }
-        for (int key : old2) {
-            if (key != -1)
-                insert(key);
-        }
-    }
-
-public:
-    CuckooHash(int initialSize = 11) {
-        size = initialSize;
-        table1.assign(size, -1);
-        table2.assign(size, -1);
-        numElements = 0;
-        srand(time(0));
-    }
-
-    bool insert(int key) {
-        if (search(key)) return false;
-
-        int loopCount = 0;
-        int pos1 = hash1(key);
-        for (int i = 0; i < MAX_REHASHES; ++i) {
-            if (table1[pos1] == -1) {
-                table1[pos1] = key;
-                numElements++;
-                return true;
-            }
-            swap(key, table1[pos1]);
-            int pos2 = hash2(key);
-            if (table2[pos2] == -1) {
-                table2[pos2] = key;
-                numElements++;
-                return true;
-            }
-            swap(key, table2[pos2]);
-            pos1 = hash1(key);
-        }
-
-        rehash();
-        return insert(key); // tenta de novo após rehash
-    }
-
-    bool search(int key) {
-        int pos1 = hash1(key);
-        int pos2 = hash2(key);
-        return table1[pos1] == key || table2[pos2] == key;
-    }
-
-    bool remove(int key) {
-        int pos1 = hash1(key);
-        if (table1[pos1] == key) {
-            table1[pos1] = -1;
-            numElements--;
+    for (; loop_count < max_loop; ++loop_count) {
+        size_t pos1 = hash1(cur.id);
+        if (!table1[pos1].occupied) {
+            table1[pos1] = Entry(cur);
+            ++size;
             return true;
         }
+        std::swap(cur, table1[pos1].data);
 
-        int pos2 = hash2(key);
-        if (table2[pos2] == key) {
-            table2[pos2] = -1;
-            numElements--;
+        size_t pos2 = hash2(cur.id);
+        if (!table2[pos2].occupied) {
+            table2[pos2] = Entry(cur);
+            ++size;
             return true;
         }
-
-        return false;
+        std::swap(cur, table2[pos2].data);
     }
 
-    void display() {
-        cout << "Table 1: ";
-        for (int i = 0; i < size; i++) {
-            if (table1[i] != -1)
-                cout << table1[i] << " ";
-            else
-                cout << "_ ";
-        }
-        cout << "\nTable 2: ";
-        for (int i = 0; i < size; i++) {
-            if (table2[i] != -1)
-                cout << table2[i] << " ";
-            else
-                cout << "_ ";
-        }
-        cout << "\n";
+    rehash();
+    return insert(cur);
+}
+
+bool CuckooHashTable::remove(uint32_t id) {
+    size_t pos1 = hash1(id);
+    if (table1[pos1].occupied && table1[pos1].data.id == id) {
+        table1[pos1].occupied = false;
+        --size;
+        return true;
     }
-};
+
+    size_t pos2 = hash2(id);
+    if (table2[pos2].occupied && table2[pos2].data.id == id) {
+        table2[pos2].occupied = false;
+        --size;
+        return true;
+    }
+
+    return false;
+}
+
+Data* CuckooHashTable::search(uint32_t id) {
+    size_t pos1 = hash1(id);
+    if (table1[pos1].occupied && table1[pos1].data.id == id) {
+        return &table1[pos1].data;
+    }
+
+    size_t pos2 = hash2(id);
+    if (table2[pos2].occupied && table2[pos2].data.id == id) {
+        return &table2[pos2].data;
+    }
+
+    return nullptr;
+}
+
+bool CuckooHashTable::contains(uint32_t id) const {
+    size_t pos1 = hash1(id);
+    if (table1[pos1].occupied && table1[pos1].data.id == id) return true;
+
+    size_t pos2 = hash2(id);
+    if (table2[pos2].occupied && table2[pos2].data.id == id) return true;
+
+    return false;
+}
+
+size_t CuckooHashTable::getSize() const {
+    return size;
+}
+
+size_t CuckooHashTable::getCapacity() const {
+    return capacity;
+}
