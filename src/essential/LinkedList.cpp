@@ -2,6 +2,8 @@
 #include <cmath>
 #include <algorithm>
 #include <iostream> // For print and potential debug output
+#include <vector>   // For median, and temporary storage for interval calculations
+#include <numeric>  // For std::accumulate
 
 DoublyLinkedList::Node::Node(const Data* d) : data(d), prev(nullptr), next(nullptr) {}
 
@@ -105,102 +107,86 @@ int DoublyLinkedList::size() const {
     return count;
 }
 
-// ---- Statistics for Data::dur ----
+// Helper to get feature value from a Data object based on StatisticFeature enum
+float DoublyLinkedList::getFeatureValue(const Data* data, StatisticFeature feature) {
+    if (!data) return 0.0f; // Handle null data pointer gracefully for statistics
 
-float DoublyLinkedList::average_dur() {
-    if (count == 0) return 0.0f;
-    float sum = 0.0f;
-    Node* current = head;
-    while (current) {
-        if (current->data) sum += current->data->dur;
-        current = current->next;
+    switch (feature) {
+        case StatisticFeature::DUR: return data->dur;
+        case StatisticFeature::RATE: return data->rate;
+        case StatisticFeature::SLOAD: return data->sload;
+        case StatisticFeature::DLOAD: return data->dload;
+        case StatisticFeature::SPKTS: return static_cast<float>(data->spkts);
+        case StatisticFeature::DPKTS: return static_cast<float>(data->dpkts);
+        case StatisticFeature::SBYTES: return static_cast<float>(data->sbytes);
+        case StatisticFeature::DBYTES: return static_cast<float>(data->dbytes);
+        // Add cases for other features as they are included in StatisticFeature enum
+        default: return 0.0f; // Should not happen if enum and implementation are in sync
     }
-    return sum / count;
 }
 
-float DoublyLinkedList::stddev_dur() {
-    if (count == 0) return 0.0f;
-    float avg = average_dur();
-    float sum = 0.0f;
-    Node* current = head;
-    while (current) {
-        if (current->data) {
-            float val = current->data->dur;
-            sum += (val - avg) * (val - avg);
-        }
-        current = current->next;
-    }
-    return std::sqrt(sum / count);
-}
-
-float DoublyLinkedList::median_dur() {
-    if (count == 0) return 0.0f;
+// Helper to collect values for a given interval
+std::vector<float> DoublyLinkedList::collectIntervalValues(StatisticFeature feature, int interval_count) {
     std::vector<float> values;
-    values.reserve(count); // Pre-allocate memory for efficiency
-    Node* current = head;
-    while (current) {
-        if (current->data) values.push_back(current->data->dur);
-        current = current->next;
+    if (count == 0) return values;
+
+    int actual_count = std::min(count, interval_count);
+    values.reserve(actual_count);
+
+    Node* current = tail; // Start from the tail to get the most recent items
+    for (int i = 0; i < actual_count; ++i) {
+        if (current && current->data) {
+            values.push_back(getFeatureValue(current->data, feature));
+        }
+        if (current) current = current->prev;
     }
-    if (values.empty()) return 0.0f; // In case all data pointers were null
+    // The values are collected in reverse order (most recent first).
+    // For statistics like average, min/max, it doesn't matter.
+    // For median, sorting will handle it.
+    std::reverse(values.begin(), values.end()); // Reverse to chronological order if needed, but not strictly for stats
+
+    return values;
+}
+
+
+// Generic statistical methods that take a StatisticFeature enum and interval_count
+float DoublyLinkedList::getAverage(StatisticFeature feature, int interval_count) {
+    std::vector<float> values = collectIntervalValues(feature, interval_count);
+    if (values.empty()) return 0.0f;
+    return std::accumulate(values.begin(), values.end(), 0.0f) / values.size();
+}
+
+float DoublyLinkedList::getStdDev(StatisticFeature feature, int interval_count) {
+    std::vector<float> values = collectIntervalValues(feature, interval_count);
+    if (values.empty()) return 0.0f;
+    float avg = getAverage(feature, interval_count); // Use the same average calculated on the interval
+    float sum_sq_diff = 0.0f;
+    for (float val : values) {
+        sum_sq_diff += (val - avg) * (val - avg);
+    }
+    return (values.size() > 0) ? std::sqrt(sum_sq_diff / values.size()) : 0.0f;
+}
+
+float DoublyLinkedList::getMedian(StatisticFeature feature, int interval_count) {
+    std::vector<float> values = collectIntervalValues(feature, interval_count);
+    if (values.empty()) return 0.0f;
     std::sort(values.begin(), values.end());
     int mid = values.size() / 2;
     return values.size() % 2 == 0 ? (values[mid - 1] + values[mid]) / 2.0f : values[mid];
 }
 
-float DoublyLinkedList::min_dur() {
-    if (!head || !head->data) return 0.0f; // Handle empty list or null head data
-    float minVal = head->data->dur;
-    Node* current = head->next;
-    while (current) {
-        if (current->data) minVal = std::min(minVal, current->data->dur);
-        current = current->next;
-    }
-    return minVal;
+float DoublyLinkedList::getMin(StatisticFeature feature, int interval_count) {
+    std::vector<float> values = collectIntervalValues(feature, interval_count);
+    if (values.empty()) return 0.0f; // Or std::numeric_limits<float>::max();
+    return *std::min_element(values.begin(), values.end());
 }
 
-float DoublyLinkedList::max_dur() {
-    if (!head || !head->data) return 0.0f; // Handle empty list or null head data
-    float maxVal = head->data->dur;
-    Node* current = head->next;
-    while (current) {
-        if (current->data) maxVal = std::max(maxVal, current->data->dur);
-        current = current->next;
-    }
-    return maxVal;
+float DoublyLinkedList::getMax(StatisticFeature feature, int interval_count) {
+    std::vector<float> values = collectIntervalValues(feature, interval_count);
+    if (values.empty()) return 0.0f; // Or std::numeric_limits<float>::lowest();
+    return *std::max_element(values.begin(), values.end());
 }
 
-void DoublyLinkedList::histogram_dur(int bins) {
-    if (count == 0) {
-        std::cout << "  No data to generate histogram.\n";
-        return;
-    }
-    float minVal = min_dur();
-    float maxVal = max_dur();
-    float range = maxVal - minVal;
-    if (range == 0) {
-        std::cout << "  Todos os valores são iguais: " << minVal << "\n";
-        return;
-    }
-
-    std::vector<int> binCounts(bins, 0);
-    Node* current = head;
-    while (current) {
-        if (current->data) {
-            float val = current->data->dur;
-            int bin = std::min(int((val - minVal) / range * bins), bins - 1);
-            binCounts[bin]++;
-        }
-        current = current->next;
-    }
-
-    std::cout << "  Histogram for 'dur' (" << bins << " bins):\n";
-    for (int i = 0; i < bins; ++i) {
-        float low = minVal + i * (range / bins);
-        float high = minVal + (i + 1) * (range / bins);
-        std::cout << "    [" << low << ", " << high << "): " << binCounts[i] << "\n";
-    }
-}
 
 void DoublyLinkedList::print() const {
     Node* current = head;
@@ -210,8 +196,6 @@ void DoublyLinkedList::print() const {
         std::cout << "[" << idx << "] ";
         if (current->data) {
             std::cout << "id=" << current->data->id << ", dur=" << current->data->dur;
-            // You can add more fields as needed, e.g.:
-            // std::cout << ", rate=" << current->data->rate;
         } else {
             std::cout << "(null data)";
         }

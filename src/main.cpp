@@ -7,7 +7,9 @@
 #include <atomic>       // For std::atomic
 #include <sstream>      // For std::ostringstream
 #include <iomanip>      // For std::fixed, std::setprecision
-#include <algorithm>    // For std::min, std::remove_if
+#include <algorithm>    // For std::min, std::remove_if, std::sort, std::accumulate, std::min_element, std::max_element
+#include <numeric>      // For std::accumulate
+#include <cmath>        // For std::sqrt
 #include <cstring>      // For strlen, strncmp
 #include <memory>       // For std::unique_ptr, std::make_unique
 
@@ -62,7 +64,7 @@ std::string format_data_as_table(const Data& data_item) {
     oss << "TCP RTT (s): " << data_item.tcprtt << "\n";
     oss << "SYN-ACK Time (s): " << data_item.synack << "\n";
     oss << "ACK/Data Time (s): " << data_item.ackdat << "\n";
-    oss << "Source Packets: " << data_item.spkts << "\n";
+    oss << "Source Packets:  " << data_item.spkts << "\n";
     oss << "Dest Packets: " << data_item.dpkts << "\n";
     oss << "Source Bytes: " << data_item.sbytes << "\n";
     oss << "Dest Bytes: " << data_item.dbytes << "\n";
@@ -94,6 +96,48 @@ std::string format_data_as_table(const Data& data_item) {
     oss << "State: " << static_cast<int>(data_item.state) << " (Enum Value)\n";
     oss << "Attack Category: " << static_cast<int>(data_item.attack_category) << " (Enum Value)\n";
     oss << "Service: " << static_cast<int>(data_item.service) << " (Enum Value)\n";
+
+    return oss.str();
+}
+
+
+// Helper function to calculate and format statistics for a given feature and interval
+std::string get_stats_for_feature(DoublyLinkedList& list, StatisticFeature feature, int interval_count) {
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(4);
+
+    if (list.size() == 0) {
+        return "No data in Linked List to calculate statistics.";
+    }
+
+    std::string feature_name;
+    // Determine feature name for display
+    switch (feature) {
+        case StatisticFeature::DUR: feature_name = "Duration (dur)"; break;
+        case StatisticFeature::RATE: feature_name = "Rate"; break;
+        case StatisticFeature::SLOAD: feature_name = "Source Load (sload)"; break;
+        case StatisticFeature::DLOAD: feature_name = "Destination Load (dload)"; break;
+        case StatisticFeature::SPKTS: feature_name = "Source Packets (spkts)"; break;
+        case StatisticFeature::DPKTS: feature_name = "Destination Packets (dpkts)"; break;
+        case StatisticFeature::SBYTES: feature_name = "Source Bytes (sbytes)"; break;
+        case StatisticFeature::DBYTES: feature_name = "Destination Bytes (dbytes)"; break;
+        default: feature_name = "Unknown Feature"; break; // Should not happen with aligned enums
+    }
+
+    // Call DoublyLinkedList's methods to get statistics for the specified interval
+    float avg = list.getAverage(feature, interval_count);
+    float stddev = list.getStdDev(feature, interval_count);
+    float median = list.getMedian(feature, interval_count);
+    float min_val = list.getMin(feature, interval_count);
+    float max_val = list.getMax(feature, interval_count);
+
+    oss << "--- Statistics for " << feature_name << " (last " << interval_count << " items) ---\n";
+    oss << "  Total data points considered: " << std::min(list.size(), interval_count) << "\n"; // Show actual count
+    oss << "  Average: " << avg << "\n";
+    oss << "  Standard Deviation: " << stddev << "\n";
+    oss << "  Median: " << median << "\n";
+    oss << "  Minimum: " << min_val << "\n";
+    oss << "  Maximum: " << max_val << "\n";
 
     return oss.str();
 }
@@ -334,8 +378,50 @@ int main() {
                         reply_str = "No data with ID " + std::to_string(id_to_remove) + " found in selected data structure to remove.";
                     }
                 }
-            } else if (request_str.rfind("GET_STATS_SLOAD ", 0) == 0 || request_str.rfind("GET_STATS_CATEGORY_BREAKDOWN ", 0) == 0) { 
-                reply_str = "GET_STATS functionality NOT IMPLEMENTED yet.";
+            } else if (request_str.rfind("GET_STATS_SUMMARY ", 0) == 0) {
+                // Expected format: "GET_STATS_SUMMARY <FEATURE_ENUM_VALUE> <INTERVAL> <DS_ID>"
+                size_t prefix_len = strlen("GET_STATS_SUMMARY ");
+                std::string remaining_str = request_str.substr(prefix_len);
+
+                size_t first_space = remaining_str.find(' ');
+                size_t second_space = remaining_str.find(' ', first_space + 1);
+
+                int feature_enum_val = 0; // The enum value for StatisticFeature
+                int interval = 0;
+                int ds_id = 0;
+                
+
+                bool parse_success = true;
+                if (first_space == std::string::npos || second_space == std::string::npos) {
+                    reply_str = "Error: GET_STATS_SUMMARY requires FEATURE_ENUM_VALUE, INTERVAL, and DS_ID.";
+                    parse_success = false;
+                } else {
+                    std::string feature_enum_str = remaining_str.substr(0, first_space);
+                    std::string interval_str = remaining_str.substr(first_space + 1, second_space - (first_space + 1));
+                    std::string ds_id_str = remaining_str.substr(second_space + 1);
+
+                    try {
+                        feature_enum_val = std::stoi(feature_enum_str);
+                        interval = std::stoi(interval_str);
+                        ds_id = std::stoi(ds_id_str);
+                    } catch (const std::exception& e) {
+                        reply_str = "Error parsing FEATURE_ENUM_VALUE, INTERVAL, or DS_ID for GET_STATS_SUMMARY: " + std::string(e.what());
+                        parse_success = false;
+                    }
+                }
+
+                if (parse_success) {
+                    // For now, only Linked List is implemented for stats.
+                    if (ds_id == LINKED_LIST_DS_ID) {
+                        StatisticFeature selected_feature = static_cast<StatisticFeature>(feature_enum_val);
+                        // Call the updated get_stats_for_feature which now relies on LinkedList's interval-aware methods
+                        reply_str = get_stats_for_feature(doubly_linked_list, selected_feature, interval); 
+                    } else {
+                        reply_str = "Statistics for Data Structure ID " + std::to_string(ds_id) + " (other than Linked List) NOT IMPLEMENTED yet.";
+                    }
+                }
+            } else if (request_str.rfind("GET_STATS_CATEGORY_BREAKDOWN ", 0) == 0) { 
+                reply_str = "GET_STATS_CATEGORY_BREAKDOWN functionality NOT IMPLEMENTED yet.";
             } else {
                 reply_str = "Unknown command: " + request_str;
             }

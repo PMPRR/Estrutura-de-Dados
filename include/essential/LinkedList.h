@@ -19,6 +19,13 @@ private:
     Node* tail;
     int count;
 
+    // Helper to get feature value from a Data object based on StatisticFeature enum
+    float getFeatureValue(const Data* data, StatisticFeature feature);
+
+    // DECLARATION ADDED: Helper to collect values for a given interval
+    std::vector<float> collectIntervalValues(StatisticFeature feature, int interval_count);
+
+
 public:
     DoublyLinkedList();
     ~DoublyLinkedList(); // Destructor will only delete Node objects, not Data
@@ -29,15 +36,18 @@ public:
     bool removeById(uint32_t id); // Removes node, does NOT delete Data
     int size() const;
 
-    // Example: statistics on Data::dur (duration)
-    float average_dur();
-    float stddev_dur();
-    float median_dur();
-    float min_dur();
-    float max_dur();
-    void histogram_dur(int bins);
+    // Accessor for the head of the list (useful for external iteration if needed)
+    const Node* getHead() const { return head; }
+    // Accessor for the tail of the list (useful for backward iteration)
+    const Node* getTail() const { return tail; }
 
-    // You can add similar methods for other fields, e.g. average_rate(), etc.
+    // Generic statistical methods that take a StatisticFeature enum and interval_count
+    float getAverage(StatisticFeature feature, int interval_count);
+    float getStdDev(StatisticFeature feature, int interval_count);
+    float getMedian(StatisticFeature feature, int interval_count);
+    float getMin(StatisticFeature feature, int interval_count);
+    float getMax(StatisticFeature feature, int interval_count);
+
     void print() const;
 };
 

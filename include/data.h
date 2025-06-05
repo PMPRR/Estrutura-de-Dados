@@ -188,6 +188,17 @@ enum class State : uint8_t {
     CLO,      ///< Connection closed.
 };
 
+// New enum for selecting a feature for statistical calculation (Reduced version)
+enum class StatisticFeature : uint8_t {
+    DUR = 0,            ///< Duration of flow
+    RATE,               ///< Mean packet rate
+    SLOAD,              ///< Source-side load
+    DLOAD,              ///< Destination-side load
+    SPKTS,              ///< Number of source packets
+    DPKTS,              ///< Number of destination packets
+    SBYTES,             ///< Total bytes from source
+    DBYTES              ///< Total bytes from destination
+};
 /*
 *
 * Criado por IA, junção de chatgpt com gemini 2.5

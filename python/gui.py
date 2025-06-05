@@ -34,6 +34,23 @@ class ZeroMQGUIClient(ttk.Window):
         # Reverse map for display purposes if needed, though not directly used here
         self.reverse_ds_map = {v: k for k, v in self.data_structure_map.items()}
 
+        # Mapping for StatisticFeature enum values to display names
+        # These values must match the StatisticFeature enum in data.h
+        self.statistic_features_map = {
+            "Duration (dur)": 0,
+            "Rate": 1,
+            "Source Load (sload)": 2,
+            "Destination Load (dload)": 3,
+            "Source Packets (spkts)": 4,
+            "Destination Packets (dpkts)": 5,
+            "Source Bytes (sbytes)": 6,
+            "Destination Bytes (dbytes)": 7,
+            # Add more features as needed, matching data.h enum
+            # "SINPKT": 8, "DINPKT": 9, "SJIT": 10, "DJIT": 11, etc.
+        }
+        # Reverse map for display purposes
+        self.reverse_stats_feature_map = {v: k for k, v in self.statistic_features_map.items()}
+
 
         self._create_widgets()
         self.process_response_queue()
@@ -143,40 +160,31 @@ class ZeroMQGUIClient(ttk.Window):
         self.id_entry.grid(row=0, column=1, padx=(0, 10), pady=2, sticky="ew")
         self.input_fields_frame.grid_columnconfigure(1, weight=1) # Make entry expand
 
-        # --- Statistics Sub-options Frame (Initially Hidden) ---
-        self.stats_sub_options_frame = ttk.Labelframe(main_frame, text="Statistics Type", padding="10")
-        # Don't pack it yet, will be packed/unpacked dynamically
+        # --- Statistics Options Frame (Combobox and Interval Input) ---
+        self.stats_options_frame = ttk.Labelframe(main_frame, text="Statistics Parameters", padding="10")
+        # Initially not packed
 
-        self.selected_stats_sub_type = tk.StringVar(value="STATS_SUMMARY_SLOAD") # Default stats sub-type
+        # Feature selection Combobox
+        self.feature_label = ttk.Label(self.stats_options_frame, text="Select Feature:", bootstyle="secondary")
+        self.feature_label.grid(row=0, column=0, padx=(0,5), pady=2, sticky="w")
 
-        self.stats_summary_sload_rb = ttk.Radiobutton(
-            self.stats_sub_options_frame,
-            text="Summary Statistics (SLoad & DLoad) by Interval",
-            variable=self.selected_stats_sub_type,
-            value="STATS_SUMMARY_SLOAD",
-            command=self._toggle_input_fields, # Re-evaluate inputs on sub-type change
-            bootstyle="success-round-toggle"
+        self.selected_feature = tk.StringVar(value=list(self.statistic_features_map.keys())[0]) # Default to first feature
+        self.feature_combobox = ttk.Combobox(
+            self.stats_options_frame,
+            textvariable=self.selected_feature,
+            values=list(self.statistic_features_map.keys()),
+            state="readonly", # Make it read-only, force selection from list
+            bootstyle="info"
         )
-        self.stats_summary_sload_rb.grid(row=0, column=0, padx=5, pady=2, sticky="w")
-
-        self.stats_category_breakdown_rb = ttk.Radiobutton(
-            self.stats_sub_options_frame,
-            text="Attack Category Breakdown",
-            variable=self.selected_stats_sub_type,
-            value="STATS_CATEGORY_BREAKDOWN",
-            command=self._toggle_input_fields, # Re-evaluate inputs on sub-type change
-            bootstyle="success-round-toggle"
-        )
-        self.stats_category_breakdown_rb.grid(row=0, column=1, padx=5, pady=2, sticky="w")
-
-        self.stats_sub_options_frame.grid_columnconfigure(0, weight=1)
-        self.stats_sub_options_frame.grid_columnconfigure(1, weight=1)
+        self.feature_combobox.grid(row=0, column=1, padx=(0,10), pady=2, sticky="ew")
+        self.stats_options_frame.grid_columnconfigure(1, weight=1)
 
         # Interval input for statistics
-        self.interval_label = ttk.Label(self.stats_sub_options_frame, text="Interval (last N items):", bootstyle="secondary")
-        self.interval_entry = ttk.Entry(self.stats_sub_options_frame, bootstyle="info", width=15)
+        self.interval_label = ttk.Label(self.stats_options_frame, text="Interval (last N items):", bootstyle="secondary")
+        self.interval_label.grid(row=1, column=0, padx=(0, 5), pady=2, sticky="w")
+        self.interval_entry = ttk.Entry(self.stats_options_frame, bootstyle="info", width=15)
         self.interval_entry.insert(0, "100") # Default interval
-        self.stats_sub_options_frame.grid_columnconfigure(1, weight=1) # Make entry expand
+        self.interval_entry.grid(row=1, column=1, padx=(0, 10), pady=2, sticky="ew")
 
 
         # --- Control Buttons Frame ---
@@ -223,15 +231,13 @@ class ZeroMQGUIClient(ttk.Window):
     def _toggle_input_fields(self):
         """Hides/shows input fields and sub-frames based on the selected operation."""
         selected_main_op = self.selected_top_level_operation.get()
-        selected_stats_sub_type = self.selected_stats_sub_type.get()
 
         # Hide all specific input fields and sub-frames first
         self.id_label.grid_remove()
         self.id_entry.grid_remove()
-        self.interval_label.grid_remove()
-        self.interval_entry.grid_remove()
-        self.stats_sub_options_frame.pack_forget() # Hide the entire stats sub-frame
+        self.stats_options_frame.pack_forget() # Hide the entire stats frame
         self.data_structure_selection_frame.pack_forget() # Hide the entire DS sub-frame
+
 
         # Hide all DS radio buttons first (important for selective display)
         for rb in self.ds_radio_buttons.values():
@@ -258,7 +264,7 @@ class ZeroMQGUIClient(ttk.Window):
 
 
         elif selected_main_op == "PERFORM_STATS":
-            self.stats_sub_options_frame.pack(fill=X, pady=(0, 10)) # Show stats sub-frame
+            self.stats_options_frame.pack(fill=X, pady=(0, 10)) # Show stats options frame
             self.data_structure_selection_frame.pack(fill=X, pady=(0, 10)) # Show DS sub-frame for stats
 
             # Show only Segment Tree and Linked List for Stats
@@ -268,14 +274,7 @@ class ZeroMQGUIClient(ttk.Window):
             
             # Ensure selected_data_structure has a default that will be visible
             if self.selected_data_structure.get() not in ["SEGMENT_TREE", "LINKED_LIST"]:
-                self.selected_data_structure.set("SEGMENT_TREE") # Set default to Segment Tree if current is not one of these
-
-
-            # Now check which stats sub-type is selected to show its specific inputs
-            if selected_stats_sub_type == "STATS_SUMMARY_SLOAD":
-                self.interval_label.grid(row=1, column=0, padx=(0, 5), pady=2, sticky="w")
-                self.interval_entry.grid(row=1, column=1, padx=(0, 10), pady=2, sticky="ew")
-            # If STATS_CATEGORY_BREAKDOWN is selected, no additional inputs beyond DS needed
+                self.selected_data_structure.set("LINKED_LIST") # Set default to Linked List for stats
 
         # For other operations (GET_DATA), no special inputs or sub-frames needed
         # so simply pack_forget() handles it if not explicitly packed by previous conditions.
@@ -335,36 +334,33 @@ class ZeroMQGUIClient(ttk.Window):
             self._log_message(f"[REQ] Sending request '{request_payload}' to C++ server...", prefix="", bootstyle="info")
 
         elif main_operation == "PERFORM_STATS":
-            stats_sub_type = self.selected_stats_sub_type.get()
+            selected_feature_name = self.selected_feature.get()
+            feature_enum_value = self.statistic_features_map.get(selected_feature_name)
             
-            if stats_sub_type == "STATS_SUMMARY_SLOAD":
-                interval = self.interval_entry.get().strip()
-                if not interval:
-                    messagebox.showwarning("Input Error", "Please enter an interval for Summary Statistics.")
-                    self._log_message("[WARN] Interval required for Summary Statistics.", prefix="", bootstyle="warning")
-                    return
-                try:
-                    interval_int = int(interval)
-                    if interval_int <= 0:
-                        messagebox.showwarning("Input Error", "Interval must be a positive integer.")
-                        self._log_message("[WARN] Interval must be a positive integer.", prefix="", bootstyle="warning")
-                        return
-                except ValueError:
-                    messagebox.showwarning("Input Error", "Interval must be a valid integer.")
-                    self._log_message("[WARN] Invalid interval format. Must be integer.", prefix="", bootstyle="warning")
-                    return
-                # Include selected data structure NUMBER in the request (Segment Tree or Linked List)
-                request_payload = f"GET_STATS_SLOAD {interval} {selected_ds_num}"
-                self._log_message(f"[REQ] Sending request '{request_payload}' to C++ server...", prefix="", bootstyle="info")
-            
-            elif stats_sub_type == "STATS_CATEGORY_BREAKDOWN":
-                # Include selected data structure NUMBER in the request (Segment Tree or Linked List)
-                request_payload = f"GET_STATS_CATEGORY_BREAKDOWN {selected_ds_num}"
-                self._log_message(f"[REQ] Sending request '{request_payload}' to C++ server...", prefix="", bootstyle="info")
-            else:
-                messagebox.showwarning("Operation Error", "Please select a specific statistics type.")
-                self._log_message("[WARN] No specific statistics type selected.", prefix="", bootstyle="warning")
+            interval = self.interval_entry.get().strip()
+            if not interval:
+                messagebox.showwarning("Input Error", "Please enter an interval for Statistics.")
+                self._log_message("[WARN] Interval required for Statistics.", prefix="", bootstyle="warning")
                 return
+            try:
+                interval_int = int(interval)
+                if interval_int <= 0:
+                    messagebox.showwarning("Input Error", "Interval must be a positive integer.")
+                    self._log_message("[WARN] Interval must be a positive integer.", prefix="", bootstyle="warning")
+                    return
+            except ValueError:
+                messagebox.showwarning("Input Error", "Interval must be a valid integer.")
+                self._log_message("[WARN] Invalid interval format. Must be integer.", prefix="", bootstyle="warning")
+                return
+            
+            if feature_enum_value is None:
+                messagebox.showwarning("Input Error", "Please select a valid statistical feature.")
+                self._log_message("[WARN] No statistical feature selected.", prefix="", bootstyle="warning")
+                return
+
+            # Request format: GET_STATS_SUMMARY <feature_enum_value> <interval> <ds_id>
+            request_payload = f"GET_STATS_SUMMARY {feature_enum_value} {interval} {selected_ds_num}"
+            self._log_message(f"[REQ] Sending request '{request_payload}' to C++ server...", prefix="", bootstyle="info")
             
         elif main_operation == "GET_DATA": # Corrected value here from "GET_DATA_LAST_3"
             request_payload = "GET_DATA"
@@ -446,5 +442,4 @@ class ZeroMQGUIClient(ttk.Window):
 if __name__ == "__main__":
     app = ZeroMQGUIClient()
     app.mainloop()
-
 
