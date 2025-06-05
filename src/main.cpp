@@ -1,105 +1,201 @@
-// main.cpp
 #include <iostream>
 #include <string>
 #include <vector>
 #include <csignal>  // For signal handling (Ctrl+C)
 #include <chrono>   // For std::chrono::seconds
 #include <thread>   // For std::this_thread::sleep_for
-#include "network/data_receiver.h" // Our new class
-#include "data.h"         // The Data struct definition from your project
+#include <atomic>
+#include <sstream>  // For formatting string replies
+#include <iomanip>  // For std::fixed, std::setprecision
 
-// Global atomic boolean to signal termination for the main loop
-std::atomic<bool> keep_running_main(true);
+#include <zmq.hpp>  // ZeroMQ C++ bindings (cppzmq)
+// It's good practice to also include the C header if using C-style constants directly
+// and cppzmq doesn't explicitly wrap them all in a way your version expects.
+#include <zmq.h>    // For ZMQ_RCVTIMEO, ZMQ_DONTWAIT etc.
+
+#include "network/data_receiver.h" // Your existing DataReceiver class
+#include "data.h"                  // The Data struct definition
+
+// Global atomic boolean to signal termination for all loops
+std::atomic<bool> keep_running(true); // Ensure this is globally defined
 
 // Signal handler function
 void signal_handler(int signum) {
     if (signum == SIGINT || signum == SIGTERM) {
-        std::cout << "\nInterrupt signal (" << signum << ") received." << std::endl;
-        keep_running_main = false;
+        std::cout << "\nInterrupt signal (" << signum << ") received. Shutting down..." << std::endl;
+        keep_running = false;
     }
 }
+
+// Helper function to format a Data struct into a string
+// Ensure this function is defined or declared before main
+std::string format_data_for_reply(const Data& data_item) {
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(2); // Set precision for float values
+    oss << "ID: " << data_item.id
+        << ", Dur: " << data_item.dur << "s"
+        // Add more fields from the Data struct as needed for detailed printing
+        // Example:
+        // << ", Proto: " << static_cast<int>(data_item.proto) 
+        // << ", Service: " << static_cast<int>(data_item.service)
+        // << ", State: " << static_cast<int>(data_item.state)
+        << ", SrcBytes: " << data_item.sbytes
+        << ", DstBytes: " << data_item.dbytes
+        << ", Rate: " << data_item.rate
+        << ", AttackCat: " << static_cast<int>(data_item.attack_category) // Cast enums to int for printing
+        << ", Label: " << (data_item.label ? "Attack" : "Normal");
+    return oss.str();
+}
+
 
 int main() {
     // Register signal SIGINT and SIGTERM handlers
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
-    // Configuration for the DataReceiver
-    // In your docker-compose.yml, the publisher service is named 'python_publisher'.
-    const std::string publisher_address = "tcp://python_publisher:5556"; // Or "tcp://localhost:5556" if running locally
+    // --- Setup DataReceiver (Subscriber to python_publisher) ---
+    const std::string publisher_address = "tcp://python_publisher:5556";
+    const std::string zmq_subscription_topic = ""; 
+    const std::string actual_data_prefix = "data_batch"; 
     
-    // Option 1: Subscribe to a specific ZMQ topic, e.g., "data_batch"
-    // The DataReceiver will then expect messages to be "data_batch <binary_payload>"
-    // const std::string zmq_subscription_topic = "data_batch";
-    // DataReceiver receiver(publisher_address, zmq_subscription_topic);
+    DataReceiver data_collector(publisher_address, zmq_subscription_topic, actual_data_prefix);
 
-    // Option 2: Subscribe to ALL ZMQ messages (empty topic string for ZMQ_SUBSCRIBE)
-    // AND specify the prefix within the message payload that identifies your data.
-    const std::string zmq_subscription_topic = ""; // Subscribe to all ZMQ messages
-    const std::string actual_data_prefix = "data_batch"; // Process messages starting with "data_batch "
-    DataReceiver receiver(publisher_address, zmq_subscription_topic, actual_data_prefix);
+    std::cout << "[DataCollector] Attempting to start..." << std::endl;
+    if (!data_collector.start()) {
+        std::cerr << "[DataCollector] Failed to start. Exiting." << std::endl;
+        return 1;
+    }
+    std::cout << "[DataCollector] Started successfully." << std::endl;
 
-    // Option 3: Subscribe to a specific ZMQ topic, AND the data payload itself does NOT start with the topic string.
-    // This assumes the publisher sends *only* the binary data on this specific topic.
-    // const std::string zmq_subscription_topic_for_raw_data = "raw_data_stream";
-    // const std::string no_internal_prefix = ""; // Process the entire message as data
-    // DataReceiver receiver(publisher_address, zmq_subscription_topic_for_raw_data, no_internal_prefix);
+    // --- Setup ZeroMQ REP Server (for Python GUI) ---
+    zmq::context_t rep_context(1);
+    zmq::socket_t rep_socket(rep_context, ZMQ_REP); 
+    const std::string rep_server_bind_address = "tcp://*:5558";
 
-
-    std::cout << "Attempting to start DataReceiver..." << std::endl;
-    if (!receiver.start()) {
-        std::cerr << "Failed to start DataReceiver. Exiting." << std::endl;
+    try {
+        std::cout << "[REP Server] Binding to " << rep_server_bind_address << "..." << std::endl;
+        rep_socket.bind(rep_server_bind_address);
+        std::cout << "[REP Server] Successfully bound. Waiting for requests from GUI..." << std::endl;
+    } catch (const zmq::error_t& e) {
+        std::cerr << "[REP Server] Failed to bind: " << e.what() << std::endl;
+        data_collector.stop();
+        data_collector.join();
         return 1;
     }
 
-    std::cout << "DataReceiver started. Main loop running. Press Ctrl+C to exit." << std::endl;
+    size_t last_known_data_count = 0;
+    int timeout_log_counter = 0; 
 
-    size_t last_data_count = 0;
-
-    while (keep_running_main.load()) {
-        // Sleep for a bit to avoid busy-waiting
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-
-        if (!receiver.isRunning() && keep_running_main.load()) {
-            std::cerr << "DataReceiver stopped unexpectedly. Exiting main loop." << std::endl;
-            break;
+    while (keep_running.load()) {
+        zmq::message_t request_msg;
+        
+        bool received_rep_request = false;
+        try {
+            // Use ZMQ_DONTWAIT for non-blocking receive.
+            // Pass the address of request_msg for the bool zmq::socket_t::recv(zmq::message_t*, int) overload
+            if (rep_socket.recv(&request_msg, ZMQ_DONTWAIT)) { 
+                 received_rep_request = true;
+            } else {
+                // No message received immediately with ZMQ_DONTWAIT
+                received_rep_request = false;
+                // Yield CPU briefly to avoid busy-waiting in the loop when no GUI requests
+                std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
+            }
+        } catch (const zmq::error_t& e) { 
+            if (e.num() == ETERM) {
+                std::cout << "[REP Server] Context terminated during recv. Exiting loop." << std::endl;
+                break; 
+            } else if (e.num() == EAGAIN) { 
+                // EAGAIN can also mean no message when ZMQ_DONTWAIT is used.
+                received_rep_request = false;
+                std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Ensure sleep if EAGAIN means no message
+            } else {
+                std::cerr << "[REP Server] recv error: " << e.what() << std::endl;
+                received_rep_request = false; 
+            }
         }
+        
+        if (received_rep_request && request_msg.size() > 0) {
+            timeout_log_counter = 0; 
+            std::string request_str(static_cast<char*>(request_msg.data()), request_msg.size());
+            std::cout << "[REP Server] Received request: \"" << request_str << "\"" << std::endl;
 
-        std::vector<Data> current_data_batch = receiver.getCollectedData(); // Gets a copy
+            std::string reply_str;
 
-        if (current_data_batch.size() > last_data_count) {
-            std::cout << "Main loop: Total data structs collected: " << current_data_batch.size()
-                      << " (New: " << current_data_batch.size() - last_data_count << ")" << std::endl;
+            if (request_str == "GET_DATA") {
+                std::vector<Data> current_data_batch = data_collector.getCollectedData();
+                if (current_data_batch.empty()) {
+                    reply_str = "No data collected yet.";
+                } else {
+                    std::ostringstream oss_reply;
+                    oss_reply << "Total data items collected: " << current_data_batch.size() << "\n";
+                    oss_reply << "--- Last 3 Items (or fewer if less than 3) ---\n";
+                    
+                    size_t start_index = current_data_batch.size() > 3 ? current_data_batch.size() - 3 : 0;
+                    for (size_t i = start_index; i < current_data_batch.size(); ++i) {
+                        oss_reply << (i - start_index + 1) << ". " << format_data_for_reply(current_data_batch[i]) << "\n";
+                    }
+                    reply_str = oss_reply.str();
+                }
+            } else if (request_str == "GET_TOTAL_COUNT") {
+                 std::vector<Data> current_data_batch = data_collector.getCollectedData(); 
+                 reply_str = "Total data items collected: " + std::to_string(current_data_batch.size());
+            }
+            else {
+                reply_str = "Unknown command: " + request_str;
+            }
+
+            zmq::message_t reply_msg(reply_str.data(), reply_str.size());
+            try {
+                // Use 0 for no flags (equivalent to zmq::send_flags::none)
+                rep_socket.send(reply_msg, 0); 
+            } catch(const zmq::error_t& e) {
+                 std::cerr << "[REP Server] send error: " << e.what() << std::endl;
+            }
+            std::cout << "[REP Server] Sent reply for request: \"" << request_str << "\"" << std::endl;
+        } else if (!received_rep_request) { 
+            if (timeout_log_counter < 5 || timeout_log_counter % 60 == 0) { // Log first 5 timeouts, then every 60th
+                 std::cout << "[Debug] REP socket: No GUI request. Checking for GAN data. Loop count: " << timeout_log_counter << std::endl;
+            }
+            timeout_log_counter++;
             
-            // You can process the new data here. For example, print details of the latest few.
-            // Be mindful that current_data_batch can grow very large.
-            // For demonstration, let's just acknowledge new data.
-            // If you want to process only new items:
-            // for (size_t i = last_data_count; i < current_data_batch.size(); ++i) {
-            //     const auto& d = current_data_batch[i];
-            //     // std::cout << "  New Data ID: " << d.id << ", Duration: " << d.dur << std::endl;
-            // }
-
-            last_data_count = current_data_batch.size();
-        } else if (current_data_batch.empty() && last_data_count == 0) {
-            // std::cout << "Main loop: No data collected yet." << std::endl;
+            std::vector<Data> current_data_from_gan = data_collector.getCollectedData();
+            
+            // UNCOMMENTED DIAGNOSTIC LINE:
+//            if (timeout_log_counter % 5 == 0 || current_data_from_gan.size() != last_known_data_count) { 
+//                 std::cout << "[Debug] DataCollector Check: Current items from GAN = " << current_data_from_gan.size() 
+//                           << ", Last known count = " << last_known_data_count << std::endl;
+//            }
+//
+          //  if (current_data_from_gan.size() > last_known_data_count) {
+          //      timeout_log_counter = 0; 
+          //      std::cout << "\n*****************************************************" << std::endl;
+          //      std::cout << "* [GAN Data Monitor] New data received and processed! *" << std::endl;
+          //      std::cout << "*****************************************************" << std::endl;
+          //      std::cout << "Previous total items: " << last_known_data_count << std::endl;
+          //      std::cout << "Current total items: " << current_data_from_gan.size() << std::endl;
+          //      std::cout << "Newly processed items in this batch (" << current_data_from_gan.size() - last_known_data_count << "):" << std::endl;
+          //      
+          //      for (size_t i = last_known_data_count; i < current_data_from_gan.size(); ++i) {
+          //          if (i < current_data_from_gan.size()){ 
+          //               std::cout << "  - " << format_data_for_reply(current_data_from_gan[i]) << std::endl;
+          //          }
+          //      }
+          //      last_known_data_count = current_data_from_gan.size(); 
+          //      std::cout << "*****************************************************\n" << std::endl;
+          //  }
         }
     }
 
-    std::cout << "Main loop terminating. Stopping DataReceiver..." << std::endl;
-    receiver.stop();  // Signal the receiver thread to stop
-    receiver.join();  // Wait for the receiver thread to finish
+    std::cout << "[REP Server] Shutting down..." << std::endl;
+    std::cout << "[REP Server] Resources will be released." << std::endl;
 
-    std::cout << "DataReceiver stopped." << std::endl;
+    std::cout << "[DataCollector] Signaling to stop..." << std::endl;
+    data_collector.stop();
+    data_collector.join(); 
+    std::cout << "[DataCollector] Stopped." << std::endl;
     
-    // Final check of collected data
-    std::vector<Data> final_data = receiver.getCollectedData();
-    std::cout << "Total Data structs collected by the end: " << final_data.size() << std::endl;
-    if (!final_data.empty()) {
-        std::cout << "Example - First collected Data struct ID: " << final_data.front().id << std::endl;
-        std::cout << "Example - Last collected Data struct ID: " << final_data.back().id << std::endl;
-    }
-
-    std::cout << "Subscriber shutting down normally." << std::endl;
+    std::cout << "Application shut down gracefully." << std::endl;
     return 0;
 }
+

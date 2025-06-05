@@ -1,0 +1,48 @@
+# Dockerfile.python_gui_wayland
+
+# Use an official Python runtime as a parent image
+FROM python:3.9-slim-buster
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libzmq3-dev \
+    tk-dev \
+    # X11 libs (still crucial as Tkinter will likely use XWayland as a fallback)
+    libx11-6 \
+    libxext6 \
+    libxrender1 \
+    libxtst6 \
+    libxi6 \
+    libxss1 \
+    libxft2 \
+    libfontconfig1 \
+    xauth \
+    # Wayland client libraries
+    libwayland-client0 \
+    libwayland-cursor0 \
+    libwayland-egl1 \
+    # GTK might be used by Tkinter for theming or parts of its backend;
+    # having GTK Wayland support can sometimes help if Tkinter leverages it.
+    libgtk-3-0 \
+    # Clean up apt cache to reduce image size
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the requirements file for the GUI client
+COPY python/requirements_gui.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements_gui.txt
+
+# Copy the Python GUI application script into the container
+# (Assuming your script is named gui.py in the python_gui directory)
+COPY python/gui.py .
+
+# Environment variables like DISPLAY, WAYLAND_DISPLAY, XDG_RUNTIME_DIR
+# will be passed from the host via docker-compose.yml
+
+# Command to run the Python GUI client
+CMD ["python", "gui.py"]
+

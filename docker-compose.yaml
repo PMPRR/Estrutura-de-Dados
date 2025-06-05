@@ -8,12 +8,32 @@ services:
     depends_on:
       - python_publisher
 
+  # Container to generate synthetic data
+  python_publisher:
+    build:
+      context: . # Build context is the current directory
+      dockerfile: Dockerfile.python # Use the Python Dockerfile
+    image: esd-python_publisher # ADD THIS LINE or ensure it matches the name Docker uses
+    container_name: GAN_generator
+    ports:
+      - "5556:5556"
+    networks:
+      - app_network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1 
+              capabilities: [gpu]
+
   # To program the inside docker
   app-dev:
     build:
       context: .
       dockerfile: Dockerfile.dev
     image: esd:dev # It's good practice to also name images for other services
+    container_name: dev_environment
     command: ["tail", "-f", "/dev/null"]
     volumes:
       - ./test:/app/test
@@ -25,31 +45,55 @@ services:
       - ./README.md:/app/README.md
     depends_on:
       - python_publisher
+    ports:
+      - "5558:5558"
+    networks:
+        - app_network
 
   app-main:
     build:
       context: .
       dockerfile: Dockerfile.prod
     image: esd:main # This was in your original, which is good
+    container_name: cpp_data_server
     depends_on:
       - python_publisher
     command: ["./bin/hello"]
-
-  # Container to generate synthetic data
-  python_publisher:
-    build:
-      context: . # Build context is the current directory
-      dockerfile: Dockerfile.python # Use the Python Dockerfile
-    image: esd-python_publisher # ADD THIS LINE or ensure it matches the name Docker uses
-    container_name: GAN_generator
     ports:
-      - "5556:5556"
-    # If you are NOT using a GPU, ensure the 'deploy' section for GPU resources is removed.
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1 
-              capabilities: [gpu]
+      - "5558:5558"
+    networks:
+        - app_network
+
+  python-gui-client:
+    build:
+      context: .
+      # Ensure this points to your Dockerfile that includes X11, xauth, AND Wayland libs
+      dockerfile: Dockerfile.gui 
+    image: esd:gui_client_wayland # Optional: new image name
+    container_name: python_gui_display_wayland # Matching container name from your error logs
+    depends_on:
+      - app-main 
+    environment:
+      # For X11/XWayland
+      - DISPLAY=${DISPLAY} 
+      # For native Wayland applications (and XWayland context)
+      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY}
+      - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}
+      # Hint for GTK-based backends (Tkinter might use parts of GTK for theming/rendering)
+      # Prioritizes Wayland but allows X11 (XWayland) fallback.
+      - GDK_BACKEND=wayland,x11 
+    volumes:
+      # For X11/XWayland communication
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw 
+      # For native Wayland communication
+      - ${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}:${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}:rw
+      # Mount the parent XDG_RUNTIME_DIR as well, as some Wayland resources might be there
+      - ${XDG_RUNTIME_DIR}:${XDG_RUNTIME_DIR}:rw
+    networks:
+      - app_network
+
+# Define the network for inter-container communication
+networks:
+  app_network:
+    driver: bridge # Default network driver
 
