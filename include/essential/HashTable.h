@@ -1,42 +1,46 @@
-#ifndef HASHTABLE_H
-#define HASHTABLE_H
-
+#pragma once
+#include <string>
 #include <vector>
-#include <optional>
-#include <functional>
-#include <iostream>
+#include <list>
 
 namespace essential {
 
-template<typename K, typename V>
 class HashTable {
+public:
+    // Construtor
+    explicit HashTable(size_t capacidade = 101);
+
+    // Insere um par chave-valor na tabela
+    void insert(const std::string &key, const std::string &value);
+
+    // Remove uma chave
+    bool remove(const std::string &key);
+
+    // Busca valor pela chave, retorna nullptr se não encontrar
+    const std::string* find(const std::string &key) const;
+
+    // Limpa toda a tabela
+    void clear();
+
+    // Retorna o número de elementos armazenados
+    size_t size() const;
+
+    // Destrutor
+    ~HashTable();
+
 private:
-    struct Entry {
-        K key;
-        V value;
-        bool occupied = false;
-        bool deleted = false;
+    // Estrutura para os pares chave-valor
+    struct Node {
+        std::string key;
+        std::string value;
+        Node(const std::string &k, const std::string &v) : key(k), value(v) {}
     };
 
-    std::vector<Entry> table;
-    size_t current_size;
-    size_t capacity;
-    const float load_factor_threshold = 0.7;
+    std::vector< std::list<Node> > table;
+    size_t itemCount;
 
-    size_t hash(const K& key) const;
-    void rehash();
-
-public:
-    HashTable(size_t init_capacity = 8);
-    void insert(const K& key, const V& value);
-    std::optional<V> get(const K& key) const;
-    bool erase(const K& key);
-    void display() const;
+    // Função hash simples para string
+    size_t hash(const std::string &key) const;
 };
 
 } // namespace essential
-
-// Importa a implementação
-#include "../../src/HashTable.tpp"
-
-#endif // HASHTABLE_H
