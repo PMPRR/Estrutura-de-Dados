@@ -1,0 +1,44 @@
+# Start from the same base as your production C++ image for consistency
+FROM ubuntu:18.04
+
+# Install necessary build tools and git
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    gcc \
+    g++ \
+    cmake \
+    git \
+    libzmq3-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- Install Google Benchmark from source ---
+WORKDIR /usr/src/
+# Clone a specific, older tag of Google Benchmark compatible with CMake 3.10
+RUN git clone --depth 1 --branch v1.6.0 https://github.com/google/benchmark.git
+
+# Create a build directory
+RUN mkdir benchmark/build && cd benchmark/build
+
+# Configure and build the library
+# CORRECTED: Added -DBENCHMARK_ENABLE_TESTING=OFF to prevent it from looking for Google Test
+RUN cd benchmark/build && cmake .. -DCMAKE_BUILD_TYPE=RELEASE -DBENCHMARK_ENABLE_TESTING=OFF && make && make install
+
+# --- Prepare the application build directory ---
+WORKDIR /app
+
+# Copy your project files
+COPY . .
+
+# Build the project, including the new benchmark target (defined in CMakeLists.txt)
+RUN mkdir build && \
+    mkdir bin && \
+    cd build && \
+    # This -DBUILD_BENCHMARKS=ON flag activates the conditional block in CMakeLists.txt
+    cmake .. -DBUILD_BENCHMARKS=ON && \
+    cd /app && \
+    cmake --build build
+
+# The default command could be to run the benchmarks
+CMD ["./bin/benchmarks"]
+

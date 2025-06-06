@@ -37,6 +37,8 @@ public:
     // Prints a visual representation of the skip list to the console for debugging.
     void printList() const;
 
+    size_t getMemoryUsage() const;
+
 private:
     struct Node {
         uint32_t key;

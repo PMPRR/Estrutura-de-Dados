@@ -9,6 +9,11 @@ DoublyLinkedList::Node::Node(const Data* d) : data(d), prev(nullptr), next(nullp
 
 DoublyLinkedList::DoublyLinkedList() : head(nullptr), tail(nullptr), count(0) {}
 
+size_t DoublyLinkedList::getMemoryUsage() const {
+    // Memory for each node is a const Data* pointer + 2 node pointers (prev, next)
+    return size() * (sizeof(Node)); 
+}
+
 DoublyLinkedList::~DoublyLinkedList() {
     Node* current = head;
     while (current) {

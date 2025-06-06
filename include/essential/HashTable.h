@@ -1,14 +1,28 @@
 #ifndef HASHTABLE_H_
 #define HASHTABLE_H_
 
-#include <string> // Still needed for std::string if hash function uses it, but not for Node directly
+#include <string> 
 #include <vector>
 #include <list>
-#include <cstdint> // For uint32_t
-#include "data.h"  // Include Data struct definition
+#include <cstdint> 
+#include "data.h"  
+
+// NEW: Struct to hold collision and load factor information
+struct CollisionInfo {
+    size_t total_buckets;
+    size_t used_buckets;
+    size_t colliding_buckets;
+    size_t max_chain_length;
+    float load_factor;
+    float collision_rate_percent;
+
+    size_t total_memory_bytes;
+};
+
 
 class HashTable {
 public:
+
     // Constructor
     explicit HashTable(size_t capacidade = 101);
 
@@ -26,6 +40,9 @@ public:
 
     // Retorna o número de elementos armazenados
     size_t size() const;
+
+    // NEW: Method to get collision and other stats
+    CollisionInfo getCollisionInfo() const;
 
     // Destrutor (limpa apenas os Nodes, não os Data* apontados)
     ~HashTable();

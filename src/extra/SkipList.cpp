@@ -6,6 +6,17 @@
 #include <vector>
 #include <iomanip> // For std::setw
 
+size_t SkipList::getMemoryUsage() const {
+    size_t total_size = sizeof(*head_); // Start with header size
+    Node* current = head_->forward[0];
+    while (current != nullptr) {
+        // Add size of this node: struct size + extra pointers
+        total_size += sizeof(Node) + (current->level - 1) * sizeof(Node*);
+        current = current->forward[0];
+    }
+    return total_size;
+}
+
 // Constructor
 SkipList::SkipList(int max_level, float p)
     : MAX_LEVEL_(max_level), P_(p), current_level_(0), size_(0) {

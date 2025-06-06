@@ -3,6 +3,16 @@
 #include <algorithm>
 #include <iostream>
 
+size_t AVL::getMemoryUsage() const {
+    return getMemoryUsageRecursive(_root);
+}
+
+size_t AVL::getMemoryUsageRecursive(Node_AVL* node) const {
+    if (node == nullptr) return 0;
+    // Memory is sum of current node + memory of left and right subtrees
+    return sizeof(Node_AVL) + getMemoryUsageRecursive(node->left) + getMemoryUsageRecursive(node->right);
+}
+
 void AVL::insert(const Data *data) { 
     _root = insertUtil(data, _root); 
 }

@@ -9,6 +9,33 @@ HashTable::~HashTable() {
     clear();
 }
 
+CollisionInfo HashTable::getCollisionInfo() const {
+    CollisionInfo info = {0};
+    info.total_buckets = table.size();
+    info.load_factor = static_cast<float>(itemCount) / info.total_buckets;
+    
+    // Memory for the vector of lists itself
+    info.total_memory_bytes = info.total_buckets * sizeof(std::list<Node>);
+
+    for (const auto& bucket : table) {
+        if (!bucket.empty()) {
+            info.used_buckets++;
+            // Memory for the nodes in the list
+            info.total_memory_bytes += bucket.size() * (sizeof(Node) + (2 * sizeof(void*))); // Approx. list overhead
+            if (bucket.size() > 1) {
+                info.colliding_buckets++;
+            }
+            if (bucket.size() > info.max_chain_length) {
+                info.max_chain_length = bucket.size();
+            }
+        }
+    }
+    if (info.used_buckets > 0) {
+        info.collision_rate_percent = (static_cast<float>(info.colliding_buckets) / info.used_buckets) * 100.0f;
+    }
+    return info;
+}
+
 // Simple hash function for uint32_t using std::hash
 size_t HashTable::hash(uint32_t key) const {
     return std::hash<uint32_t>{}(key) % table.size();

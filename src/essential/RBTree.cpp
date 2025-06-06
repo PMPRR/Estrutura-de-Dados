@@ -1,4 +1,14 @@
 #include "essential/RBTree.h"
+
+size_t RBTree::getMemoryUsage() const {
+    if (root_ == nil_) return sizeof(*nil_);
+    return getMemoryUsageRecursive(root_) + sizeof(*nil_);
+}
+size_t RBTree::getMemoryUsageRecursive(Node* node) const {
+    if (node == nil_) return 0;
+    return sizeof(Node) + getMemoryUsageRecursive(node->left) + getMemoryUsageRecursive(node->right);
+}
+
 RBTree::RBTree() : size_(0) {
     // nil_ sentinel node setup
     nil_ = new Node(0, nullptr, Color::BLACK);

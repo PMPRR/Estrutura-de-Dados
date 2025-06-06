@@ -44,7 +44,10 @@ public:
     void printTree() const;
     bool verifyProperties() const;
 
+    size_t getMemoryUsage() const;
 private:
+
+    size_t getMemoryUsageRecursive(Node* node) const;
     Node* root_;
     Node* nil_;  // Sentinel node
     size_t size_;

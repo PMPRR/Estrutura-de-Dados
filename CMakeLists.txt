@@ -13,65 +13,67 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_COMPILER g++)
 
 # Setting default paths for cmake
-# It's generally better to use CMAKE_BINARY_DIR for build artifacts
-# rather than CMAKE_SOURCE_DIR to keep the source tree clean.
-# However, retaining user's preference for now.
-set(EXECUTABLE_OUTPUT_PATH ${CMAKE_SOURCE_DIR}) # Or consider ${CMAKE_BINARY_DIR}/bin
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin) # Or consider ${CMAKE_BINARY_DIR}/bin
+set(EXECUTABLE_OUTPUT_PATH ${CMAKE_SOURCE_DIR}/bin)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+
+# --- NEW: Option to control benchmark builds ---
+# This will be OFF by default, so app-main and app-run don't try to build benchmarks.
+option(BUILD_BENCHMARKS "Build the Google Benchmark tests" OFF)
+
 
 # Find ZeroMQ using pkg-config
 find_package(PkgConfig REQUIRED)
-# This command will halt if libzmq>=4.2.5 is not found by pkg-config
-# and will populate ZMQ_LIBRARIES and ZMQ_INCLUDE_DIRS if found.
 pkg_check_modules(ZMQ REQUIRED libzmq>=4.2.5)
 
 # Find Threads package (for pthreads)
-# This populates CMAKE_THREAD_LIBS_INIT and should define Threads::Threads if available
 find_package(Threads REQUIRED)
-
-# The custom check for ZMQ_LIBRARY has been removed as it's redundant
-# with `pkg_check_modules(ZMQ REQUIRED ...)` and was using a non-standard variable.
-# If libzmq was not found, CMake would have already issued a FATAL_ERROR.
 
 # Adds testing features
 enable_testing()
 
 # get all CPP files, except main.cpp
 file(GLOB_RECURSE ALL_SOURCES "src/*.cpp")
-file(GLOB_RECURSE MAIN_SOURCE "src/main.cpp") # Assumes only one main.cpp
+file(GLOB_RECURSE MAIN_SOURCE "src/main.cpp") 
 list(REMOVE_ITEM ALL_SOURCES ${MAIN_SOURCE})
 
 # main project
 add_executable(${PROJECT_NAME} ${MAIN_SOURCE})
 
 # Link against the 'core' static library, ZeroMQ, and Threads (pthreads)
-target_link_libraries(${PROJECT_NAME} PRIVATE core)
-target_link_libraries(${PROJECT_NAME} PRIVATE ${ZMQ_LIBRARIES}) # Correct variable from pkg_check_modules
-target_link_libraries(${PROJECT_NAME} PRIVATE ${CMAKE_THREAD_LIBS_INIT}) # Use variable for pthreads
+target_link_libraries(${PROJECT_NAME} PRIVATE core ${ZMQ_LIBRARIES} Threads::Threads)
 
 # Include directories for the main project
-target_include_directories(${PROJECT_NAME} PUBLIC "include") # Project's own include directory
-target_include_directories(${PROJECT_NAME} PRIVATE ${ZMQ_INCLUDE_DIRS}) # ZeroMQ include directories
+target_include_directories(${PROJECT_NAME} PUBLIC "include" PRIVATE ${ZMQ_INCLUDE_DIRS})
 
 # Create static library with all non-main sources
 add_library(core STATIC ${ALL_SOURCES})
-target_include_directories(core PUBLIC "include") # 'core' library's own include directory
-# Note: If 'core' itself directly used pthreads and was a shared library,
-# it might need linking too. For a static library, the final executable linking it needs it.
+target_include_directories(core PUBLIC "include") 
 
-# tests
+# CTest functional tests (your existing tests)
 file(GLOB TEST_SOURCES "test/*.cpp")
+# Exclude the new benchmark file from the functional tests
+list(FILTER TEST_SOURCES EXCLUDE REGEX ".*benchmark.cpp$")
 foreach(test_src ${TEST_SOURCES})
     get_filename_component(test_name ${test_src} NAME_WE)
     add_executable(${test_name} ${test_src})
-    # Link tests against 'core', ZeroMQ, and Threads (pthreads)
-    target_link_libraries(${test_name} PRIVATE core)
-    target_link_libraries(${test_name} PRIVATE ${ZMQ_LIBRARIES}) # Correct variable
-    target_link_libraries(${test_name} PRIVATE ${CMAKE_THREAD_LIBS_INIT}) # Use variable for pthreads for tests
-
-    # Include directories for tests
-    target_include_directories(${test_name} PUBLIC "include") # Project's own include directory
-    target_include_directories(${test_name} PRIVATE ${ZMQ_INCLUDE_DIRS}) # ZeroMQ include directories
+    target_link_libraries(${test_name} PRIVATE core ${ZMQ_LIBRARIES} Threads::Threads)
+    target_include_directories(${test_name} PUBLIC "include" PRIVATE ${ZMQ_INCLUDE_DIRS})
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
+
+
+# --- NEW: Conditional Benchmark Section ---
+# This entire section will only be processed if BUILD_BENCHMARKS is set to ON
+if(BUILD_BENCHMARKS)
+    message(STATUS "Benchmark build enabled. Looking for Google Benchmark library...")
+    find_package(benchmark REQUIRED)
+    
+    add_executable(benchmarks test/benchmark.cpp)
+    
+    # Link the benchmark executable against your 'core' library and Google Benchmark
+    target_link_libraries(benchmarks PRIVATE core benchmark::benchmark Threads::Threads)
+    target_include_directories(benchmarks PUBLIC "include")
+    
+    message(STATUS "Benchmark target 'benchmarks' configured.")
+endif()
 

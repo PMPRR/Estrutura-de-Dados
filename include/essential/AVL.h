@@ -2,6 +2,7 @@
 #define AVL_H_
 
 #include "data.h"
+#include <cstddef>
 
 //struct Node_AVL {
 //public:
@@ -36,7 +37,9 @@ public:
     Node_AVL* queryById(uint32_t id);
 
     void removeById(uint32_t id);
+    size_t getMemoryUsage() const;
 private:
+    size_t getMemoryUsageRecursive(Node_AVL* node) const;
     int16_t height(Node_AVL* node);
     int16_t getBalance(Node_AVL* node);
 

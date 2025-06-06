@@ -49,6 +49,7 @@ public:
     float getMax(StatisticFeature feature, int interval_count);
 
     void print() const;
+    size_t getMemoryUsage() const;
 };
 
 #endif // DOUBLYLINKEDLIST_H

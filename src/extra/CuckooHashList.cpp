@@ -17,6 +17,33 @@ CuckooHashTable::CuckooHashTable(size_t initial_capacity)
     if (max_loop < 10) max_loop = 10; // Ensure a reasonable minimum
 }
 
+CuckooUsageInfo CuckooHashTable::getUsageInfo() const {
+    CuckooUsageInfo info = {0};
+    info.capacity_per_table = capacity;
+    info.total_capacity = capacity * 2;
+    info.current_size = size;
+    info.total_memory_bytes = info.total_capacity * sizeof(Entry);
+
+    size_t table1_count = 0;
+    for(const auto& entry : table1) {
+        if (entry.data != nullptr) table1_count++;
+    }
+
+    size_t table2_count = 0;
+    for(const auto& entry : table2) {
+        if (entry.data != nullptr) table2_count++;
+    }
+
+    if (capacity > 0) {
+        info.table1_usage_percent = (static_cast<float>(table1_count) / capacity) * 100.0f;
+        info.table2_usage_percent = (static_cast<float>(table2_count) / capacity) * 100.0f;
+    }
+    if (info.total_capacity > 0) {
+        info.overall_load_factor_percent = (static_cast<float>(size) / info.total_capacity) * 100.0f;
+    }
+    return info;
+}
+
 // Simple hash function for uint32_t
 size_t CuckooHashTable::hash1(uint32_t key) const {
     return key % capacity;

@@ -105,7 +105,17 @@ services:
       - app_network
     ports:
       - "5559:5559" # Exposes predictor's stats port
-# Define the network for inter-container communication
+
+  app-benchmark:
+    build:
+      context: .
+      dockerfile: Dockerfile.benchmark
+    image: esd:benchmark
+    container_name: cpp_benchmarks
+    # No ports or dependencies needed unless benchmarks need to connect to something
+    # Run in interactive mode to see the output
+    command: ["./bin/benchmarks", "--benchmark_format=console"]
+  # Define the network for inter-container communication
 networks:
   app_network:
     driver: bridge # Default network driver
