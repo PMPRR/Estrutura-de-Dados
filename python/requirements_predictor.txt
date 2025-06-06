@@ -1,0 +1,5 @@
+pyzmq
+pandas
+numpy
+scikit-learn
+tensorflow-cpu

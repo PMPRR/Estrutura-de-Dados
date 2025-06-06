@@ -92,6 +92,17 @@ services:
     networks:
       - app_network
 
+  live-predictor: # New service for the live predictor
+    build:
+      context: .
+      dockerfile: Dockerfile.predictor # Use the new Dockerfile
+    image: esd-live-predictor # Give it a unique image name
+    container_name: live_data_predictor
+    depends_on:
+      - python_publisher # Depends on the data generator
+    networks:
+      - app_network
+
 # Define the network for inter-container communication
 networks:
   app_network:

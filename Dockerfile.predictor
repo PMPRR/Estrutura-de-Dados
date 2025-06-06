@@ -1,0 +1,39 @@
+# Use a Python base image, similar to your other Python services
+FROM python:3.9-slim-buster
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Install system dependencies
+# - libzmq3-dev is needed for pyzmq
+# - build-essential might be needed if some pip packages compile from source
+# - curl and unzip are no longer strictly needed if copying the dataset directly
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libzmq3-dev \
+        build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the requirements file for the predictor
+# Ensure this file exists in your ./python/ directory
+COPY python/requirements_predictor.txt ./requirements_predictor.txt
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements_predictor.txt
+
+# Copy the Python scripts needed for the predictor
+# Explicitly naming the destination files in /app
+COPY python/prediction.py ./prediction.py
+COPY python/categorical.py ./categorical.py
+
+# Copy the Keras model
+# Explicitly naming the destination file in /app
+COPY python/model20.keras ./model20.keras
+
+# Copy the dataset directly into the /app directory
+# Ensure UNSW_NB15_training-set.csv is in the root of your Docker build context (your project directory)
+COPY data/UNSW_NB15_training-set.csv ./UNSW_NB15_training-set.csv
+
+# Command to run the live predictor script
+CMD ["python", "./prediction.py"]
+
