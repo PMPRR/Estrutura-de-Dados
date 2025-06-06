@@ -12,6 +12,7 @@
 #include <cmath>        // For std::sqrt
 #include <cstring>      // For strlen, strncmp
 #include <memory>       // For std::unique_ptr, std::make_unique
+#include <map>          // For parsing query parameters
 
 #include <zmq.hpp>      // For ZeroMQ C++ bindings (zmq::context_t, zmq::socket_t, zmq::message_t, zmq::error_t)
 #include <zmq.h>        // For ZMQ_DONTWAIT (C-style ZMQ constants)
@@ -24,6 +25,7 @@
 #include "extra/CuckooHashTable.h" // Include for CuckooHashTable
 #include "extra/SegmentTree.h"     // Include for SegmentTree
 #include "essential/RBTree.h"      // Include for Red-Black Tree
+#include "extra/SkipList.h"        // Include for Skip List
 
 // Global atomic boolean to signal termination for all loops
 std::atomic<bool> keep_running(true);
@@ -45,7 +47,7 @@ std::string format_data_for_reply(const Data& data_item) {
         << ", SBytes: " << data_item.sbytes
         << ", DBytes: " << data_item.dbytes
         << ", Rate: " << data_item.rate
-        << ", AttackCat: " << static_cast<int>(data_item.attack_category)
+        << ", Proto: " << static_cast<int>(data_item.proto)
         << ", Label: " << (data_item.label ? "Attack" : "Normal");
     return oss.str();
 }
@@ -112,7 +114,8 @@ std::string get_ds_name_by_id(int ds_id) {
         case 3: return "Hash Table";
         case 4: return "Cuckoo Hash Table";
         case 5: return "Segment Tree";
-        case 6: return "Red-Black Tree"; // Added Red-Black Tree
+        case 6: return "Red-Black Tree";
+        case 7: return "Skip List";
         default: return "Unknown Data Structure";
     }
 }
@@ -181,10 +184,7 @@ std::string get_stats_for_feature_segmenttree(const SegmentTree& tree, Statistic
     float min_val = tree.getMin(feature, interval_count);
     float max_val = tree.getMax(feature, interval_count);
     
-    // std::vector<float> temp_values = tree.collectFeatureValuesForInterval(feature, interval_count);
-
     oss << "--- Statistics for " << feature_name << " (last " << interval_count << " items) from Segment Tree ---\n";
-    // oss << "  Total data points considered for interval: " << temp_values.size() << "\n";
     oss << "  Average: " << avg << "\n";
     oss << "  Standard Deviation: " << stddev << "\n";
     oss << "  Median: " << median << "\n";
@@ -192,6 +192,20 @@ std::string get_stats_for_feature_segmenttree(const SegmentTree& tree, Statistic
     oss << "  Maximum: " << max_val << "\n";
 
     return oss.str();
+}
+
+// Helper function to parse query strings like "key1=val1 key2=val2" into a map
+std::map<std::string, std::string> parse_query_params(const std::string& query) {
+    std::map<std::string, std::string> params;
+    std::stringstream ss(query);
+    std::string item;
+    while (ss >> item) {
+        size_t pos = item.find('=');
+        if (pos != std::string::npos) {
+            params[item.substr(0, pos)] = item.substr(pos + 1);
+        }
+    }
+    return params;
 }
 
 
@@ -205,17 +219,19 @@ int main() {
     HashTable hash_table;                
     CuckooHashTable cuckoo_hash_table;   
     SegmentTree segment_tree;            
-    RBTree rb_tree;                      // Instantiate Red-Black Tree
+    RBTree rb_tree;                      
+    SkipList skip_list;
     
     const int AVL_DS_ID = 1;             
     const int LINKED_LIST_DS_ID = 2;     
     const int HASHTABLE_DS_ID = 3;       
     const int CUCKOO_HASH_DS_ID = 4;     
     const int SEGMENT_TREE_DS_ID = 5;    
-    const int RED_BLACK_TREE_DS_ID = 6;  // Define Red-Black Tree ID
+    const int RED_BLACK_TREE_DS_ID = 6;  
+    const int SKIP_LIST_DS_ID = 7;       
 
 
-    // --- Setup DataReceiver (Subscriber to python_publisher) ---
+    // --- Setup DataReceiver ---
     const std::string publisher_address = "tcp://python_publisher:5556";
     const std::string zmq_subscription_topic = "data_batch"; 
     const std::string actual_data_prefix = "data_batch"; 
@@ -229,7 +245,7 @@ int main() {
     }
     std::cout << "[DataCollector] Started successfully." << std::endl;
 
-    // --- Setup ZeroMQ REP Server (for Python GUI) ---
+    // --- Setup ZeroMQ REP Server ---
     zmq::context_t rep_context(1);
     zmq::socket_t rep_socket(rep_context, ZMQ_REP);
     const std::string rep_server_bind_address = "tcp://*:5558";
@@ -266,7 +282,8 @@ int main() {
                 hash_table.insert(data_to_insert);
                 cuckoo_hash_table.insert(data_to_insert);
                 segment_tree.insert(data_to_insert);
-                rb_tree.insert(data_to_insert); // Insert into Red-Black Tree
+                rb_tree.insert(data_to_insert);
+                skip_list.insert(data_to_insert);
             }
             last_processed_data_collector_count = current_received_count;
             std::cout << "[Main] Master data store size: " << master_data_store.size() << " items." << std::endl;
@@ -352,8 +369,10 @@ int main() {
                         found_data_ptr = cuckoo_hash_table.search(id_to_query);
                     } else if (ds_id == SEGMENT_TREE_DS_ID) { 
                         found_data_ptr = segment_tree.find(id_to_query);
-                    } else if (ds_id == RED_BLACK_TREE_DS_ID) { // Query Red-Black Tree
+                    } else if (ds_id == RED_BLACK_TREE_DS_ID) {
                         found_data_ptr = rb_tree.find(id_to_query);
+                    } else if (ds_id == SKIP_LIST_DS_ID) {
+                        found_data_ptr = skip_list.find(id_to_query);
                     } else {
                         reply_str = "Query by ID for Data Structure ID " + std::to_string(ds_id) + " NOT IMPLEMENTED yet.";
                     }
@@ -399,8 +418,10 @@ int main() {
                          if (cuckoo_hash_table.search(id_to_remove) != nullptr) { cuckoo_hash_table.remove(id_to_remove); removed_from_ds = true; }
                     } else if (ds_id == SEGMENT_TREE_DS_ID) {
                         if (segment_tree.find(id_to_remove) != nullptr) { segment_tree.remove(id_to_remove); removed_from_ds = true; }
-                    } else if (ds_id == RED_BLACK_TREE_DS_ID) { // Remove from Red-Black Tree
+                    } else if (ds_id == RED_BLACK_TREE_DS_ID) {
                         if (rb_tree.find(id_to_remove) != nullptr) { rb_tree.remove(id_to_remove); removed_from_ds = true; }
+                    } else if (ds_id == SKIP_LIST_DS_ID) {
+                        if (skip_list.find(id_to_remove) != nullptr) { skip_list.remove(id_to_remove); removed_from_ds = true; }
                     }
                     else {
                         reply_str = "Remove by ID for Data Structure ID " + std::to_string(ds_id) + " NOT IMPLEMENTED yet.";
@@ -423,8 +444,8 @@ int main() {
                         reply_str = "No data with ID " + std::to_string(id_to_remove) + " found in " + get_ds_name_by_id(ds_id) + " to remove.";
                     }
                 }
-            } else if (request_str.rfind("GET_STATS_SUMMARY ", 0) == 0) {
-                size_t prefix_len = strlen("GET_STATS_SUMMARY ");
+            } else if (request_str.rfind("PERFORM_STATS ", 0) == 0) { // CORRECTED COMMAND NAME
+                size_t prefix_len = strlen("PERFORM_STATS ");
                 std::string remaining_str = request_str.substr(prefix_len);
                 size_t first_space = remaining_str.find(' ');
                 size_t second_space = remaining_str.find(' ', first_space + 1);
@@ -434,7 +455,7 @@ int main() {
                 bool parse_success = true;
 
                 if (first_space == std::string::npos || second_space == std::string::npos) {
-                    reply_str = "Error: GET_STATS_SUMMARY requires FEATURE_ENUM_VALUE, INTERVAL, and DS_ID.";
+                    reply_str = "Error: PERFORM_STATS requires FEATURE_ENUM_VALUE, INTERVAL, and DS_ID.";
                     parse_success = false;
                 } else {
                     std::string feature_enum_str = remaining_str.substr(0, first_space);
@@ -445,7 +466,7 @@ int main() {
                         interval = std::stoi(interval_str);
                         ds_id = std::stoi(ds_id_str);
                     } catch (const std::exception& e) {
-                        reply_str = "Error parsing FEATURE_ENUM_VALUE, INTERVAL, or DS_ID for GET_STATS_SUMMARY: " + std::string(e.what());
+                        reply_str = "Error parsing FEATURE_ENUM_VALUE, INTERVAL, or DS_ID for PERFORM_STATS: " + std::string(e.what());
                         parse_success = false;
                     }
                 }
@@ -461,8 +482,67 @@ int main() {
                         reply_str = "Statistics for " + get_ds_name_by_id(ds_id) + " NOT IMPLEMENTED yet.";
                     }
                 }
-            } else if (request_str.rfind("GET_STATS_CATEGORY_BREAKDOWN ", 0) == 0) { 
-                reply_str = "GET_STATS_CATEGORY_BREAKDOWN functionality NOT IMPLEMENTED yet.";
+            } else if (request_str.rfind("QUERY_FILTERED_SORTED", 0) == 0) {
+                // --- NEW: Handle Filter and Sort Query ---
+                size_t prefix_len = strlen("QUERY_FILTERED_SORTED ");
+                std::map<std::string, std::string> params;
+                if (request_str.length() > prefix_len) {
+                    params = parse_query_params(request_str.substr(prefix_len));
+                }
+
+                // 1. Filtering
+                std::vector<const Data*> filtered_data;
+                for(const auto& data_ptr : master_data_store) {
+                    bool passes_filter = true;
+
+                    // Filter by label
+                    if (params.count("label")) {
+                        bool required_label = (params["label"] == "true");
+                        if (data_ptr->label != required_label) passes_filter = false;
+                    }
+                    // Filter by protocol
+                    if (passes_filter && params.count("proto")) {
+                        try {
+                           int required_proto = std::stoi(params["proto"]);
+                           if (static_cast<int>(data_ptr->proto) != required_proto) passes_filter = false;
+                        } catch (const std::exception& e) { /* ignore invalid proto value */ }
+                    }
+
+                    if(passes_filter) {
+                        filtered_data.push_back(data_ptr.get());
+                    }
+                }
+
+                // 2. Sorting
+                std::string sort_by = params.count("sort_by") ? params["sort_by"] : "id";
+                std::string sort_order = params.count("sort_order") ? params["sort_order"] : "asc";
+
+                std::sort(filtered_data.begin(), filtered_data.end(), 
+                    [&](const Data* a, const Data* b) {
+                        bool is_asc = (sort_order == "asc");
+                        if (sort_by == "dur") {
+                            return is_asc ? (a->dur < b->dur) : (a->dur > b->dur);
+                        } else if (sort_by == "rate") {
+                            return is_asc ? (a->rate < b->rate) : (a->rate > b->rate);
+                        } else if (sort_by == "sbytes") {
+                            return is_asc ? (a->sbytes < b->sbytes) : (a->sbytes > b->sbytes);
+                        } else if (sort_by == "dbytes") {
+                            return is_asc ? (a->dbytes < b->dbytes) : (a->dbytes > b->dbytes);
+                        }
+                        return is_asc ? (a->id < b->id) : (a->id > b->id);
+                    });
+
+                // 3. Formatting the reply
+                std::ostringstream oss_reply;
+                oss_reply << "Found " << filtered_data.size() << " matching records. Displaying top results:\n";
+                oss_reply << "-----------------------------------------------------------------\n";
+                
+                int limit = params.count("limit") ? std::stoi(params["limit"]) : 20;
+                for(int i = 0; i < std::min((int)filtered_data.size(), limit); ++i) {
+                    oss_reply << (i + 1) << ". " << format_data_for_reply(*filtered_data[i]) << "\n";
+                }
+                reply_str = oss_reply.str();
+
             } else {
                 reply_str = "Unknown command: " + request_str;
             }

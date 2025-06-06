@@ -7,7 +7,7 @@ import ttkbootstrap as ttk
 import zmq
 from ttkbootstrap.constants import *
 from ttkbootstrap.scrolled import ScrolledText
-import json # For parsing statistics
+import json
 
 class ZeroMQGUIClient(ttk.Window):
     def __init__(self):
@@ -27,14 +27,11 @@ class ZeroMQGUIClient(ttk.Window):
         self.zmq_context = zmq.Context()
         self.stop_event = threading.Event()
 
-        # Updated data structure map to include Red-Black Tree with ID 6
+        # Data structure map remains the same
         self.data_structure_map = {
-            "AVL": 1, 
-            "LINKED_LIST": 2, 
-            "HASHSET": 3,
-            "CUCKOO_HASH": 4, 
-            "SEGMENT_TREE": 5, 
-            "RED_BLACK_TREE": 6
+            "AVL": 1, "LINKED_LIST": 2, "HASHSET": 3,
+            "CUCKOO_HASH": 4, "SEGMENT_TREE": 5, "RED_BLACK_TREE": 6,
+            "SKIP_LIST": 7
         }
         self.statistic_features_map = {
             "Duration (dur)": 0, "Rate": 1, "Source Load (sload)": 2,
@@ -42,6 +39,10 @@ class ZeroMQGUIClient(ttk.Window):
             "Destination Packets (dpkts)": 5, "Source Bytes (sbytes)": 6,
             "Destination Bytes (dbytes)": 7,
         }
+        # The following maps are no longer needed as the filter feature is removed
+        # self.sort_features_map = { ... }
+        # self.protocol_filter_map = { ... }
+
 
         self._create_widgets()
         self.process_cpp_response_queue()
@@ -64,6 +65,7 @@ class ZeroMQGUIClient(ttk.Window):
         top_level_operation_frame.pack(fill=X, pady=(0, 10))
 
         self.selected_top_level_operation = tk.StringVar(value="GET_DATA")
+        # REMOVED "Filter & Sort Data" from the list of operations
         operations = [
             ("Query Last 3 Data", "GET_DATA"), ("Query Data by ID", "QUERY_DATA_BY_ID"),
             ("Remove Data by ID", "REMOVE_DATA_BY_ID"), ("Perform Statistics", "PERFORM_STATS")
@@ -72,23 +74,25 @@ class ZeroMQGUIClient(ttk.Window):
             rb = ttk.Radiobutton(
                 top_level_operation_frame, text=text, variable=self.selected_top_level_operation,
                 value=value, command=self._toggle_input_fields, 
-                bootstyle="info-round-toggle" if "Query" in text or "Perform" in text else "danger-round-toggle"
+                bootstyle="info-round-toggle"
             )
             rb.grid(row=i // 2, column=i % 2, padx=5, pady=2, sticky="w")
         for i in range(2): top_level_operation_frame.grid_columnconfigure(i, weight=1)
 
+        # This frame holds all possible data structure radio buttons
         self.data_structure_selection_frame = ttk.Labelframe(left_frame, text="Select Data Structure", padding="10")
         self.selected_data_structure = tk.StringVar(value="AVL")
-        # Updated list to include Red-Black Tree
         all_ds_options = [
             ("AVL Tree", "AVL"), ("Linked List", "LINKED_LIST"), ("Hashset", "HASHSET"),
-            ("Cuckoo Hash", "CUCKOO_HASH"), ("Segment Tree", "SEGMENT_TREE"), ("Red-Black Tree", "RED_BLACK_TREE")
+            ("Cuckoo Hash", "CUCKOO_HASH"), ("Segment Tree", "SEGMENT_TREE"), ("Red-Black Tree", "RED_BLACK_TREE"),
+            ("Skip List", "SKIP_LIST")
         ]
         self.ds_radio_buttons = {}
         for i, (text, value) in enumerate(all_ds_options):
             rb = ttk.Radiobutton(
                 self.data_structure_selection_frame, text=text, variable=self.selected_data_structure,
                 value=value, bootstyle="info-round-toggle")
+            # Place them in the grid initially; their visibility will be managed by _toggle_input_fields
             rb.grid(row=i // 3, column=i % 3, padx=5, pady=2, sticky="w")
             self.ds_radio_buttons[value] = rb
         for i in range(3): self.data_structure_selection_frame.grid_columnconfigure(i, weight=1)
@@ -115,6 +119,8 @@ class ZeroMQGUIClient(ttk.Window):
         self.interval_entry.insert(0, "100")
         self.interval_entry.grid(row=1, column=1, padx=(0, 10), pady=2, sticky="ew")
 
+        # The filter_sort_frame has been completely removed.
+
         control_frame = ttk.Frame(left_frame)
         control_frame.pack(fill=X, pady=(5, 10))
         self.status_label = ttk.Label(control_frame, text=f"C++ Server: {self.cpp_server_address}", bootstyle="info")
@@ -130,6 +136,7 @@ class ZeroMQGUIClient(ttk.Window):
         self.log_text.pack(fill=BOTH, expand=YES)
         self.log_text.text.configure(state="disabled")
 
+        # --- Statistics display widgets (in right_frame) ---
         self.stats_vars = {
             "total_processed": tk.StringVar(value="Total: N/A"), "tp": tk.StringVar(value="TP: N/A"),
             "fp": tk.StringVar(value="FP: N/A"), "fn": tk.StringVar(value="FN: N/A"),
@@ -158,31 +165,36 @@ class ZeroMQGUIClient(ttk.Window):
 
     def _toggle_input_fields(self):
         selected_main_op = self.selected_top_level_operation.get()
-        self.id_label.grid_remove()
-        self.id_entry.grid_remove()
+        
+        # --- Start by hiding all optional frames and widgets ---
+        self.input_fields_frame.pack_forget()
         self.stats_options_frame.pack_forget()
         self.data_structure_selection_frame.pack_forget()
-        for rb in self.ds_radio_buttons.values(): rb.grid_remove()
+        # The filter frame was removed, so no need to forget it.
+        
+        # Explicitly hide all data structure radio buttons.
+        # This is the key to ensuring only the correct ones are shown later.
+        for rb in self.ds_radio_buttons.values():
+            rb.grid_remove()
 
-        if selected_main_op == "QUERY_DATA_BY_ID" or selected_main_op == "REMOVE_DATA_BY_ID":
-            self.id_label.grid(row=0, column=0, padx=(0, 5), pady=2, sticky="w")
-            self.id_entry.grid(row=0, column=1, padx=(0, 10), pady=2, sticky="ew")
+        # --- Selectively show frames and widgets based on the main operation ---
+        if selected_main_op in ["QUERY_DATA_BY_ID", "REMOVE_DATA_BY_ID"]:
             self.input_fields_frame.pack(fill=X, pady=(0, 10))
             self.data_structure_selection_frame.pack(fill=X, pady=(0, 10))
-            # The loop for creating the radio buttons already includes RBTree,
-            # so we just need to make sure they are all displayed.
+            # Re-grid ALL radio buttons for this view
             for i, (key, rb) in enumerate(self.ds_radio_buttons.items()):
                 rb.grid(row=i // 3, column=i % 3, padx=5, pady=2, sticky="w")
-            if self.selected_data_structure.get() not in self.data_structure_map:
-                self.selected_data_structure.set("AVL")
-
+        
         elif selected_main_op == "PERFORM_STATS":
             self.stats_options_frame.pack(fill=X, pady=(0, 10))
             self.data_structure_selection_frame.pack(fill=X, pady=(0, 10))
-            stats_ds_options = ["SEGMENT_TREE", "LINKED_LIST"] 
+            # Re-grid ONLY the specific radio buttons for statistics
+            stats_ds_options = ["SEGMENT_TREE", "LINKED_LIST"]
             for i, value in enumerate(stats_ds_options):
                 if value in self.ds_radio_buttons:
                      self.ds_radio_buttons[value].grid(row=0, column=i, padx=5, pady=2, sticky="w")
+            
+            # Ensure the default selection is one of the visible options
             if self.selected_data_structure.get() not in stats_ds_options:
                 self.selected_data_structure.set("LINKED_LIST")
 
@@ -200,41 +212,32 @@ class ZeroMQGUIClient(ttk.Window):
 
     def execute_selected_operation(self):
         main_operation = self.selected_top_level_operation.get()
-        selected_ds_str = self.selected_data_structure.get()
-        selected_ds_num = self.data_structure_map.get(selected_ds_str)
-        request_payload = ""
-
+        request_payload = main_operation 
+        
         if main_operation in ["QUERY_DATA_BY_ID", "REMOVE_DATA_BY_ID"]:
             data_id = self.id_entry.get().strip()
-            if not data_id:
-                messagebox.showwarning("Input Error", f"Please enter an ID for {main_operation}.")
-                return
-            try: int(data_id)
-            except ValueError:
+            if not data_id or not data_id.isdigit():
                 messagebox.showwarning("Input Error", "ID must be a valid integer.")
                 return
-            request_payload = f"{main_operation} {data_id} {selected_ds_num}"
+            ds_num = self.data_structure_map.get(self.selected_data_structure.get())
+            request_payload += f" {data_id} {ds_num}"
+
         elif main_operation == "PERFORM_STATS":
-            selected_feature_name = self.selected_feature.get()
-            feature_enum_value = self.statistic_features_map.get(selected_feature_name)
+            feature_enum = self.statistic_features_map.get(self.selected_feature.get())
             interval = self.interval_entry.get().strip()
-            if not interval:
-                messagebox.showwarning("Input Error", "Please enter an interval for Statistics.")
+            if not interval.isdigit() or int(interval) <= 0:
+                messagebox.showwarning("Input Error", "Interval must be a positive integer.")
                 return
-            try:
-                interval_int = int(interval)
-                if interval_int <= 0: raise ValueError("Interval must be positive.")
-            except ValueError as e:
-                messagebox.showwarning("Input Error", f"Interval must be a positive integer. Error: {e}")
-                return
-            if feature_enum_value is None:
-                messagebox.showwarning("Input Error", "Please select a valid statistical feature.")
-                return
-            request_payload = f"GET_STATS_SUMMARY {feature_enum_value} {interval} {selected_ds_num}"
+            ds_num = self.data_structure_map.get(self.selected_data_structure.get())
+            request_payload += f" {feature_enum} {interval} {ds_num}"
+        
+        # REMOVED the elif block for QUERY_FILTERED_SORTED
+        
         elif main_operation == "GET_DATA":
-            request_payload = "GET_DATA"
+            pass # No additional payload needed
+
         else:
-            messagebox.showwarning("Operation Error", "Unexpected operation selected.")
+            messagebox.showwarning("Operation Error", f"Unexpected operation selected: {main_operation}")
             return
 
         self._log_message(f"[REQ] Sending to C++: '{request_payload}'", prefix="", bootstyle="info")
@@ -295,9 +298,7 @@ class ZeroMQGUIClient(ttk.Window):
                     self._log_message("[SYS] Statistics listener: ZMQ context terminated.", bootstyle="warning")
                     break
                 except zmq.ZMQError as e:
-                    if e.errno == zmq.ETERM:
-                        self._log_message("[SYS] Statistics listener: ZMQ context terminated (ETERM).", bootstyle="warning")
-                        break
+                    if e.errno == zmq.ETERM: break
                     self._log_message(f"[ERR] Statistics listener ZMQ Error: {e}", bootstyle="danger")
                     time.sleep(1)
                 except Exception as e:
@@ -307,7 +308,6 @@ class ZeroMQGUIClient(ttk.Window):
             if stats_subscriber and not stats_subscriber.closed:
                 stats_subscriber.close()
             self._log_message("[SYS] Statistics listener thread stopped.")
-
 
     def process_stats_queue(self):
         try:
@@ -328,11 +328,9 @@ class ZeroMQGUIClient(ttk.Window):
                     self._log_message(f"[ERR] Failed to parse statistics JSON: {message_json_str}", bootstyle="danger")
                 except Exception as e:
                     self._log_message(f"[ERR] Error updating stats UI: {e}", bootstyle="danger")
-
                 self.stats_queue.task_done()
         except queue.Empty:
             pass
-
         if not self.stop_event.is_set():
             self.after(200, self.process_stats_queue)
 
@@ -341,8 +339,6 @@ class ZeroMQGUIClient(ttk.Window):
         self.stop_event.set()
         if hasattr(self, 'stats_listener_thread') and self.stats_listener_thread.is_alive():
             self.stats_listener_thread.join(timeout=1.0) 
-            if self.stats_listener_thread.is_alive():
-                 self._log_message("[WARN] Statistics listener thread did not join in time.", bootstyle="warning")
 
         if self.zmq_context and not self.zmq_context.closed:
             self._log_message("[SYS] Terminating ZMQ context...")
