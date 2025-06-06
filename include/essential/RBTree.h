@@ -3,11 +3,33 @@
 
 #include <iostream>
 #include <memory>
-#include <optional>
 #include <vector>
 #include <functional>
+#include <stdexcept>
 
 namespace essential {
+
+// Implementação simples de optional para compatibilidade com GCC 6.3.0
+template<typename T>
+class Optional {
+private:
+    bool has_value_;
+    T value_;
+    
+public:
+    Optional() : has_value_(false) {}
+    Optional(const T& value) : has_value_(true), value_(value) {}
+    
+    bool has_value() const { return has_value_; }
+    const T& value() const { 
+        if (!has_value_) throw std::runtime_error("Accessing empty Optional");
+        return value_; 
+    }
+    T& value() { 
+        if (!has_value_) throw std::runtime_error("Accessing empty Optional");
+        return value_; 
+    }
+};
 
 template <typename Key, typename Value>
 class RBTree {
@@ -33,7 +55,7 @@ public:
     // Operações básicas
     void insert(const Key& key, const Value& value);
     bool remove(const Key& key);
-    std::optional<Value> find(const Key& key) const;
+    Optional<Value> find(const Key& key) const;
     bool contains(const Key& key) const;
     void clear();
     bool empty() const;
