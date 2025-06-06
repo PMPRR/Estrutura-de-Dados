@@ -73,6 +73,7 @@ services:
     container_name: python_gui_display_wayland # Matching container name from your error logs
     depends_on:
       - app-main 
+      - live-predictor # Add dependency on the predictor
     environment:
       # For X11/XWayland
       - DISPLAY=${DISPLAY} 
@@ -102,7 +103,8 @@ services:
       - python_publisher # Depends on the data generator
     networks:
       - app_network
-
+    ports:
+      - "5559:5559" # Exposes predictor's stats port
 # Define the network for inter-container communication
 networks:
   app_network:
