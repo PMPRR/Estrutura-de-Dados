@@ -12,24 +12,29 @@ import json # For parsing statistics
 class ZeroMQGUIClient(ttk.Window):
     def __init__(self):
         super().__init__(themename="superhero")
-        self.title("ZeroMQ Data Manager & Predictor Stats") # Updated title
-        self.geometry("1200x850") # Increased size for stats display
+        self.title("ZeroMQ Data Manager & Predictor Stats")
+        self.geometry("1200x850")
 
         # For C++ Data Server
         self.cpp_server_address = "tcp://app-main:5558"
         self.cpp_response_queue = queue.Queue()
         
-        # For Python Predictor Statistics (NEW)
-        self.predictor_stats_address = "tcp://live-predictor:5559" # Assuming service name in Docker
+        # For Python Predictor Statistics
+        self.predictor_stats_address = "tcp://live-predictor:5559"
         self.predictor_stats_topic = "prediction_stats"
-        self.stats_queue = queue.Queue() # Queue for stats messages
+        self.stats_queue = queue.Queue()
 
         self.zmq_context = zmq.Context()
         self.stop_event = threading.Event()
 
+        # Updated data structure map to include Red-Black Tree with ID 6
         self.data_structure_map = {
-            "AVL": 1, "LINKED_LIST": 2, "HASHSET": 3,
-            "CUCKOO_HASH": 4, "SEGMENT_TREE": 5, "RED_BLACK_TREE": 6
+            "AVL": 1, 
+            "LINKED_LIST": 2, 
+            "HASHSET": 3,
+            "CUCKOO_HASH": 4, 
+            "SEGMENT_TREE": 5, 
+            "RED_BLACK_TREE": 6
         }
         self.statistic_features_map = {
             "Duration (dur)": 0, "Rate": 1, "Source Load (sload)": 2,
@@ -40,25 +45,21 @@ class ZeroMQGUIClient(ttk.Window):
 
         self._create_widgets()
         self.process_cpp_response_queue()
-        self.start_stats_listener() # Start the new listener
-        self.process_stats_queue()  # Start processing stats from the queue
+        self.start_stats_listener()
+        self.process_stats_queue()
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self._log_message("[SYS] GUI Client initialized.")
 
     def _create_widgets(self):
-        # Main container frame
         main_container = ttk.Frame(self, padding="10")
         main_container.pack(fill=BOTH, expand=YES)
 
-        # Left frame for C++ server interaction
         left_frame = ttk.Frame(main_container)
         left_frame.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 10))
 
-        # Right frame for predictor statistics (NEW)
         right_frame = ttk.Labelframe(main_container, text="Live Prediction Statistics", padding="10")
         right_frame.pack(side=RIGHT, fill=BOTH, expand=True)
 
-        # --- Widgets for C++ Server Interaction (in left_frame) ---
         top_level_operation_frame = ttk.Labelframe(left_frame, text="Select Main Operation", padding="10")
         top_level_operation_frame.pack(fill=X, pady=(0, 10))
 
@@ -78,6 +79,7 @@ class ZeroMQGUIClient(ttk.Window):
 
         self.data_structure_selection_frame = ttk.Labelframe(left_frame, text="Select Data Structure", padding="10")
         self.selected_data_structure = tk.StringVar(value="AVL")
+        # Updated list to include Red-Black Tree
         all_ds_options = [
             ("AVL Tree", "AVL"), ("Linked List", "LINKED_LIST"), ("Hashset", "HASHSET"),
             ("Cuckoo Hash", "CUCKOO_HASH"), ("Segment Tree", "SEGMENT_TREE"), ("Red-Black Tree", "RED_BLACK_TREE")
@@ -124,45 +126,33 @@ class ZeroMQGUIClient(ttk.Window):
 
         log_frame = ttk.Labelframe(left_frame, text="Responses from C++ Server / Logs", padding="10")
         log_frame.pack(fill=BOTH, expand=YES)
-        self.log_text = ScrolledText(log_frame, height=15, width=70, wrap=WORD, autohide=True) # Adjusted height
+        self.log_text = ScrolledText(log_frame, height=15, width=70, wrap=WORD, autohide=True)
         self.log_text.pack(fill=BOTH, expand=YES)
         self.log_text.text.configure(state="disabled")
 
-        # --- Widgets for Predictor Statistics (in right_frame) (NEW) ---
         self.stats_vars = {
-            "total_processed": tk.StringVar(value="Total: N/A"),
-            "tp": tk.StringVar(value="TP: N/A"),
-            "fp": tk.StringVar(value="FP: N/A"),
-            "fn": tk.StringVar(value="FN: N/A"),
-            "tn": tk.StringVar(value="TN: N/A"),
-            "accuracy": tk.StringVar(value="Accuracy: N/A"),
-            "precision": tk.StringVar(value="Precision: N/A"),
-            "recall": tk.StringVar(value="Recall: N/A"),
+            "total_processed": tk.StringVar(value="Total: N/A"), "tp": tk.StringVar(value="TP: N/A"),
+            "fp": tk.StringVar(value="FP: N/A"), "fn": tk.StringVar(value="FN: N/A"),
+            "tn": tk.StringVar(value="TN: N/A"), "accuracy": tk.StringVar(value="Accuracy: N/A"),
+            "precision": tk.StringVar(value="Precision: N/A"), "recall": tk.StringVar(value="Recall: N/A"),
             "f1_score": tk.StringVar(value="F1-Score: N/A")
         }
-
         ttk.Label(right_frame, textvariable=self.stats_vars["total_processed"], font=("Helvetica", 12, "bold")).pack(pady=5, anchor="w")
-        
         cm_frame = ttk.Frame(right_frame)
         cm_frame.pack(fill=X, pady=5)
         ttk.Label(cm_frame, textvariable=self.stats_vars["tp"], bootstyle="success", font=("Helvetica", 11)).pack(side=LEFT, padx=5)
         ttk.Label(cm_frame, textvariable=self.stats_vars["fp"], bootstyle="danger", font=("Helvetica", 11)).pack(side=LEFT, padx=5)
-        
         cm_frame2 = ttk.Frame(right_frame)
         cm_frame2.pack(fill=X, pady=5)
         ttk.Label(cm_frame2, textvariable=self.stats_vars["fn"], bootstyle="warning", font=("Helvetica", 11)).pack(side=LEFT, padx=5)
         ttk.Label(cm_frame2, textvariable=self.stats_vars["tn"], bootstyle="success", font=("Helvetica", 11)).pack(side=LEFT, padx=5)
-
         ttk.Separator(right_frame, orient=HORIZONTAL).pack(fill=X, pady=10, padx=5)
-
         ttk.Label(right_frame, textvariable=self.stats_vars["accuracy"], font=("Helvetica", 11)).pack(pady=3, anchor="w")
         ttk.Label(right_frame, textvariable=self.stats_vars["precision"], font=("Helvetica", 11)).pack(pady=3, anchor="w")
         ttk.Label(right_frame, textvariable=self.stats_vars["recall"], font=("Helvetica", 11)).pack(pady=3, anchor="w")
         ttk.Label(right_frame, textvariable=self.stats_vars["f1_score"], font=("Helvetica", 11)).pack(pady=3, anchor="w")
-        
         self.predictor_status_label = ttk.Label(right_frame, text=f"Stats from: {self.predictor_stats_address}", bootstyle="info")
         self.predictor_status_label.pack(side=BOTTOM, fill=X, pady=(10,0))
-
 
         self._toggle_input_fields()
 
@@ -179,17 +169,19 @@ class ZeroMQGUIClient(ttk.Window):
             self.id_entry.grid(row=0, column=1, padx=(0, 10), pady=2, sticky="ew")
             self.input_fields_frame.pack(fill=X, pady=(0, 10))
             self.data_structure_selection_frame.pack(fill=X, pady=(0, 10))
-            for i, value in enumerate(self.data_structure_map.keys()):
-                self.ds_radio_buttons[value].grid(row=i // 3, column=i % 3, padx=5, pady=2, sticky="w")
+            # The loop for creating the radio buttons already includes RBTree,
+            # so we just need to make sure they are all displayed.
+            for i, (key, rb) in enumerate(self.ds_radio_buttons.items()):
+                rb.grid(row=i // 3, column=i % 3, padx=5, pady=2, sticky="w")
             if self.selected_data_structure.get() not in self.data_structure_map:
                 self.selected_data_structure.set("AVL")
 
         elif selected_main_op == "PERFORM_STATS":
             self.stats_options_frame.pack(fill=X, pady=(0, 10))
             self.data_structure_selection_frame.pack(fill=X, pady=(0, 10))
-            stats_ds_options = ["SEGMENT_TREE", "LINKED_LIST"] # Only these for stats
+            stats_ds_options = ["SEGMENT_TREE", "LINKED_LIST"] 
             for i, value in enumerate(stats_ds_options):
-                if value in self.ds_radio_buttons: # Check if radio button exists
+                if value in self.ds_radio_buttons:
                      self.ds_radio_buttons[value].grid(row=0, column=i, padx=5, pady=2, sticky="w")
             if self.selected_data_structure.get() not in stats_ds_options:
                 self.selected_data_structure.set("LINKED_LIST")
@@ -283,15 +275,12 @@ class ZeroMQGUIClient(ttk.Window):
         if not self.stop_event.is_set():
             self.after(100, self.process_cpp_response_queue)
 
-    # --- New methods for Predictor Statistics ---
     def start_stats_listener(self):
-        """Starts a new thread to listen for predictor statistics."""
         self.stats_listener_thread = threading.Thread(target=self._listen_for_stats, daemon=True)
         self.stats_listener_thread.start()
         self._log_message(f"[SYS] Statistics listener started for {self.predictor_stats_address} on topic '{self.predictor_stats_topic}'.")
 
     def _listen_for_stats(self):
-        """ZMQ SUB socket loop to receive statistics messages."""
         stats_subscriber = self.zmq_context.socket(zmq.SUB)
         try:
             stats_subscriber.connect(self.predictor_stats_address)
@@ -299,8 +288,7 @@ class ZeroMQGUIClient(ttk.Window):
             
             while not self.stop_event.is_set():
                 try:
-                    # Set a timeout to allow the loop to check stop_event periodically
-                    if stats_subscriber.poll(timeout=500): # Check for message for 500ms
+                    if stats_subscriber.poll(timeout=500):
                         topic, message_json = stats_subscriber.recv_multipart()
                         self.stats_queue.put(message_json.decode('utf-8'))
                 except zmq.error.ContextTerminated:
@@ -311,7 +299,7 @@ class ZeroMQGUIClient(ttk.Window):
                         self._log_message("[SYS] Statistics listener: ZMQ context terminated (ETERM).", bootstyle="warning")
                         break
                     self._log_message(f"[ERR] Statistics listener ZMQ Error: {e}", bootstyle="danger")
-                    time.sleep(1) # Avoid tight loop on other ZMQ errors
+                    time.sleep(1)
                 except Exception as e:
                     self._log_message(f"[ERR] Statistics listener unexpected error: {e}", bootstyle="danger")
                     time.sleep(1)
@@ -322,13 +310,11 @@ class ZeroMQGUIClient(ttk.Window):
 
 
     def process_stats_queue(self):
-        """Processes statistics messages from the queue and updates the GUI."""
         try:
             while not self.stats_queue.empty():
                 message_json_str = self.stats_queue.get_nowait()
                 try:
                     stats_data = json.loads(message_json_str)
-                    # Update GUI labels
                     self.stats_vars["total_processed"].set(f"Total Processed: {stats_data.get('total_processed', 'N/A')}")
                     self.stats_vars["tp"].set(f"TP: {stats_data.get('tp', 'N/A')}")
                     self.stats_vars["fp"].set(f"FP: {stats_data.get('fp', 'N/A')}")
@@ -348,21 +334,19 @@ class ZeroMQGUIClient(ttk.Window):
             pass
 
         if not self.stop_event.is_set():
-            self.after(200, self.process_stats_queue) # Check queue every 200ms
+            self.after(200, self.process_stats_queue)
 
     def on_closing(self):
         self._log_message("[SYS] Closing application...")
         self.stop_event.set()
-        # Wait for listener thread to join if it was started
         if hasattr(self, 'stats_listener_thread') and self.stats_listener_thread.is_alive():
             self.stats_listener_thread.join(timeout=1.0) 
             if self.stats_listener_thread.is_alive():
                  self._log_message("[WARN] Statistics listener thread did not join in time.", bootstyle="warning")
 
-
         if self.zmq_context and not self.zmq_context.closed:
             self._log_message("[SYS] Terminating ZMQ context...")
-            self.zmq_context.term() # Terminate context to unblock any hanging sockets
+            self.zmq_context.term()
         
         self._log_message("[SYS] Destroying window.")
         self.destroy()

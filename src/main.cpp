@@ -23,6 +23,7 @@
 #include "essential/HashTable.h"   // Include for Chaining HashTable
 #include "extra/CuckooHashTable.h" // Include for CuckooHashTable
 #include "extra/SegmentTree.h"     // Include for SegmentTree
+#include "essential/RBTree.h"      // Include for Red-Black Tree
 
 // Global atomic boolean to signal termination for all loops
 std::atomic<bool> keep_running(true);
@@ -111,7 +112,7 @@ std::string get_ds_name_by_id(int ds_id) {
         case 3: return "Hash Table";
         case 4: return "Cuckoo Hash Table";
         case 5: return "Segment Tree";
-        // Add other cases as needed
+        case 6: return "Red-Black Tree"; // Added Red-Black Tree
         default: return "Unknown Data Structure";
     }
 }
@@ -127,7 +128,6 @@ std::string get_stats_for_feature_linkedlist(DoublyLinkedList& list, StatisticFe
     }
 
     std::string feature_name;
-    // Determine feature name for display
     switch (feature) {
         case StatisticFeature::DUR: feature_name = "Duration (dur)"; break;
         case StatisticFeature::RATE: feature_name = "Rate"; break;
@@ -162,13 +162,7 @@ std::string get_stats_for_feature_segmenttree(const SegmentTree& tree, Statistic
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(4);
 
-    // SegmentTree might not have a direct "size" like a list for total items,
-    // but its statistical methods should operate on the 'interval_count' of most recent items implicitly.
-    // The current SegmentTree implementation collects all pointers and then filters.
-    // We rely on the SegmentTree's internal logic for `collectFeatureValuesForInterval`.
-
     std::string feature_name;
-    // Determine feature name for display
     switch (feature) {
         case StatisticFeature::DUR: feature_name = "Duration (dur)"; break;
         case StatisticFeature::RATE: feature_name = "Rate"; break;
@@ -187,14 +181,10 @@ std::string get_stats_for_feature_segmenttree(const SegmentTree& tree, Statistic
     float min_val = tree.getMin(feature, interval_count);
     float max_val = tree.getMax(feature, interval_count);
     
-    // To display "Total data points considered", we need a way to know how many items
-    // the SegmentTree considered for the interval. The current `collectFeatureValuesForInterval`
-    // gets all, then sub-selects. We can replicate that logic here for display if needed, or modify SegmentTree.
-    std::vector<float> temp_values = tree.collectFeatureValuesForInterval(feature, interval_count);
-
+    // std::vector<float> temp_values = tree.collectFeatureValuesForInterval(feature, interval_count);
 
     oss << "--- Statistics for " << feature_name << " (last " << interval_count << " items) from Segment Tree ---\n";
-    oss << "  Total data points considered for interval: " << temp_values.size() << "\n";
+    // oss << "  Total data points considered for interval: " << temp_values.size() << "\n";
     oss << "  Average: " << avg << "\n";
     oss << "  Standard Deviation: " << stddev << "\n";
     oss << "  Median: " << median << "\n";
@@ -206,7 +196,6 @@ std::string get_stats_for_feature_segmenttree(const SegmentTree& tree, Statistic
 
 
 int main() {
-    // Register signal SIGINT and SIGTERM handlers
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
@@ -215,13 +204,15 @@ int main() {
     DoublyLinkedList doubly_linked_list; 
     HashTable hash_table;                
     CuckooHashTable cuckoo_hash_table;   
-    SegmentTree segment_tree;            // Instantiate SegmentTree
+    SegmentTree segment_tree;            
+    RBTree rb_tree;                      // Instantiate Red-Black Tree
     
     const int AVL_DS_ID = 1;             
     const int LINKED_LIST_DS_ID = 2;     
     const int HASHTABLE_DS_ID = 3;       
     const int CUCKOO_HASH_DS_ID = 4;     
-    const int SEGMENT_TREE_DS_ID = 5;    // Define Segment Tree ID
+    const int SEGMENT_TREE_DS_ID = 5;    
+    const int RED_BLACK_TREE_DS_ID = 6;  // Define Red-Black Tree ID
 
 
     // --- Setup DataReceiver (Subscriber to python_publisher) ---
@@ -254,14 +245,12 @@ int main() {
         return 1;
     }
 
-    // --- Master Data Store: std::vector of unique_ptrs to hold all collected Data objects ---
     std::vector<std::unique_ptr<Data>> master_data_store;
     size_t last_processed_data_collector_count = 0; 
 
     int timeout_log_counter = 0;
 
     while (keep_running.load()) {
-        // --- Process newly received data from DataReceiver ---
         std::pair<const Data*, size_t> received_data_view = data_collector.getCollectedData();
         const Data* received_data_ptr = received_data_view.first;
         size_t current_received_count = received_data_view.second;
@@ -276,15 +265,14 @@ int main() {
                 doubly_linked_list.append(data_to_insert);
                 hash_table.insert(data_to_insert);
                 cuckoo_hash_table.insert(data_to_insert);
-                segment_tree.insert(data_to_insert); // Insert into Segment Tree
-
+                segment_tree.insert(data_to_insert);
+                rb_tree.insert(data_to_insert); // Insert into Red-Black Tree
             }
             last_processed_data_collector_count = current_received_count;
             std::cout << "[Main] Master data store size: " << master_data_store.size() << " items." << std::endl;
             std::cout << "[Main] Data structures updated." << std::endl;
         }
 
-        // --- Handle GUI requests (REP socket) ---
         zmq::message_t request_msg;
         bool received_rep_request = false;
         try {
@@ -362,15 +350,17 @@ int main() {
                         found_data_ptr = hash_table.find(id_to_query);
                     } else if (ds_id == CUCKOO_HASH_DS_ID) { 
                         found_data_ptr = cuckoo_hash_table.search(id_to_query);
-                    } else if (ds_id == SEGMENT_TREE_DS_ID) { // Query Segment Tree
+                    } else if (ds_id == SEGMENT_TREE_DS_ID) { 
                         found_data_ptr = segment_tree.find(id_to_query);
+                    } else if (ds_id == RED_BLACK_TREE_DS_ID) { // Query Red-Black Tree
+                        found_data_ptr = rb_tree.find(id_to_query);
                     } else {
                         reply_str = "Query by ID for Data Structure ID " + std::to_string(ds_id) + " NOT IMPLEMENTED yet.";
                     }
 
                     if (found_data_ptr != nullptr) {
                         reply_str = format_data_as_table(*found_data_ptr);
-                    } else if (reply_str.empty()) { // Only set if no other error/message
+                    } else if (reply_str.empty()) {
                         reply_str = "No data with ID " + std::to_string(id_to_query) + " found in " + get_ds_name_by_id(ds_id) + ".";
                     }
                 }
@@ -399,35 +389,27 @@ int main() {
 
                 if (parse_success) {
                     bool removed_from_ds = false;
-                    if (ds_id == AVL_DS_ID) { 
-                        if (avl_tree.queryById(id_to_remove) != nullptr) {
-                           avl_tree.removeById(id_to_remove); removed_from_ds = true;
-                        }
-                    } else if (ds_id == LINKED_LIST_DS_ID) { 
-                        if (doubly_linked_list.findById(id_to_remove) != nullptr) {
-                           doubly_linked_list.removeById(id_to_remove); removed_from_ds = true;
-                        }
-                    } else if (ds_id == HASHTABLE_DS_ID) { 
-                         if (hash_table.find(id_to_remove) != nullptr) {
-                            hash_table.remove(id_to_remove); removed_from_ds = true;
-                        }
-                    } else if (ds_id == CUCKOO_HASH_DS_ID) { 
-                         if (cuckoo_hash_table.search(id_to_remove) != nullptr) {
-                            cuckoo_hash_table.remove(id_to_remove); removed_from_ds = true;
-                        }
-                    } else if (ds_id == SEGMENT_TREE_DS_ID) { // Remove from Segment Tree
-                        if (segment_tree.find(id_to_remove) != nullptr) { // Check if exists before removing
-                            segment_tree.remove(id_to_remove);
-                            removed_from_ds = true;
-                        }
-                    } else {
+                    if (ds_id == AVL_DS_ID) {
+                        if (avl_tree.queryById(id_to_remove) != nullptr) { avl_tree.removeById(id_to_remove); removed_from_ds = true; }
+                    } else if (ds_id == LINKED_LIST_DS_ID) {
+                        if (doubly_linked_list.findById(id_to_remove) != nullptr) { doubly_linked_list.removeById(id_to_remove); removed_from_ds = true; }
+                    } else if (ds_id == HASHTABLE_DS_ID) {
+                         if (hash_table.find(id_to_remove) != nullptr) { hash_table.remove(id_to_remove); removed_from_ds = true; }
+                    } else if (ds_id == CUCKOO_HASH_DS_ID) {
+                         if (cuckoo_hash_table.search(id_to_remove) != nullptr) { cuckoo_hash_table.remove(id_to_remove); removed_from_ds = true; }
+                    } else if (ds_id == SEGMENT_TREE_DS_ID) {
+                        if (segment_tree.find(id_to_remove) != nullptr) { segment_tree.remove(id_to_remove); removed_from_ds = true; }
+                    } else if (ds_id == RED_BLACK_TREE_DS_ID) { // Remove from Red-Black Tree
+                        if (rb_tree.find(id_to_remove) != nullptr) { rb_tree.remove(id_to_remove); removed_from_ds = true; }
+                    }
+                    else {
                         reply_str = "Remove by ID for Data Structure ID " + std::to_string(ds_id) + " NOT IMPLEMENTED yet.";
                     }
 
                     if (removed_from_ds) {
                         auto it = std::remove_if(master_data_store.begin(), master_data_store.end(),
                             [&](const std::unique_ptr<Data>& data_ptr) {
-                                return data_ptr && data_ptr->id == id_to_remove; // Added null check for data_ptr
+                                return data_ptr && data_ptr->id == id_to_remove;
                             });
                         if (it != master_data_store.end()) {
                             master_data_store.erase(it, master_data_store.end());
@@ -472,7 +454,7 @@ int main() {
                     StatisticFeature selected_feature = static_cast<StatisticFeature>(feature_enum_val);
                     if (ds_id == LINKED_LIST_DS_ID) {
                         reply_str = get_stats_for_feature_linkedlist(doubly_linked_list, selected_feature, interval); 
-                    } else if (ds_id == SEGMENT_TREE_DS_ID) { // Statistics from Segment Tree
+                    } else if (ds_id == SEGMENT_TREE_DS_ID) {
                          reply_str = get_stats_for_feature_segmenttree(segment_tree, selected_feature, interval);
                     }
                      else {
@@ -493,7 +475,7 @@ int main() {
             }
             std::cout << "[REP Server] Sent reply for request: \"" << request_str << "\"" << std::endl;
         } else if (!received_rep_request) {
-            if (timeout_log_counter < 5 || timeout_log_counter % 600 == 0) { // Log less frequently
+            if (timeout_log_counter < 5 || timeout_log_counter % 600 == 0) { 
                  // std::cout << "[Debug] REP socket: No GUI request. Loop count: " << timeout_log_counter << std::endl;
             }
             timeout_log_counter++;
