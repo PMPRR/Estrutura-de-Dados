@@ -58,7 +58,7 @@ cmake .. && make
 ## ROADMAP
 - [x] datastet escolhido (0.5)
 - [x] implementar Linked List, AVL e Hashset (0.6)
-- [ ] implementar Cuckoo Hash e Segment Tree (1.0)
+- [x] implementar Cuckoo Hash e Segment Tree (1.0)
 - [ ] implementar Red-Black tree (0.3)
 - [x] fazer interface gráfica (0.6)
 - [ ] benchmark (1)
@@ -66,7 +66,7 @@ cmake .. && make
 - [x] fazer a simulação (0.3)
 - [ ] fazer calculos estatisticos (0.3)
 - [ ] fazer mais alguma coisa (0.3)
-- [ ] estrutura de dado otimizada Cuckoo (1)
-- [ ] estrutura de dado otimizada Red-Black tree (0.3)
+- [x] estrutura de dado otimizada Cuckoo (1)
+- [ ] estrutura de dado otimizada Skip-List otimizada (0.3)
 - [ ] 5 testes difernetes em codições de restrição (1.5)
 
