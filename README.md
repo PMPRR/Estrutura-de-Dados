@@ -65,8 +65,8 @@ cmake .. && make
 - [x] predição por IA apartir do dataset (2)
 - [x] fazer a simulação (0.3)
 - [x] fazer calculos estatisticos (0.3)
-- [ ] fazer mais alguma coisa (0.3)
+- [x] fazer filtro e ordenação (0.3)
 - [x] estrutura de dado otimizada Cuckoo (1)
-- [ ] estrutura de dado otimizada Skip-List otimizada (0.3)
+- [x] estrutura de dado otimizada Skip-List otimizada (0.3)
 - [ ] 5 testes difernetes em codições de restrição (1.5)
 
