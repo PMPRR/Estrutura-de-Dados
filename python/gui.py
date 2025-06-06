@@ -27,11 +27,9 @@ class ZeroMQGUIClient(ttk.Window):
         self.zmq_context = zmq.Context()
         self.stop_event = threading.Event()
 
-        # Data structure map remains the same
         self.data_structure_map = {
             "AVL": 1, "LINKED_LIST": 2, "HASHSET": 3,
-            "CUCKOO_HASH": 4, "SEGMENT_TREE": 5, "RED_BLACK_TREE": 6,
-            "SKIP_LIST": 7
+            "CUCKOO_HASH": 4, "SEGMENT_TREE": 5, "RED_BLACK_TREE": 6
         }
         self.statistic_features_map = {
             "Duration (dur)": 0, "Rate": 1, "Source Load (sload)": 2,
@@ -39,9 +37,13 @@ class ZeroMQGUIClient(ttk.Window):
             "Destination Packets (dpkts)": 5, "Source Bytes (sbytes)": 6,
             "Destination Bytes (dbytes)": 7,
         }
-        # The following maps are no longer needed as the filter feature is removed
-        # self.sort_features_map = { ... }
-        # self.protocol_filter_map = { ... }
+        # NEW: Map for sorting options, values match C++ sort logic
+        self.sort_features_map = {
+            "ID": "id", "Duration": "dur", "Rate": "rate",
+            "Source Bytes": "sbytes", "Dest Bytes": "dbytes"
+        }
+        # NEW: Map for protocol filter, values match C++ enum values
+        self.protocol_filter_map = {"Any": "any", "TCP": 0, "UDP": 1, "ICMP": 4}
 
 
         self._create_widgets()
@@ -65,10 +67,11 @@ class ZeroMQGUIClient(ttk.Window):
         top_level_operation_frame.pack(fill=X, pady=(0, 10))
 
         self.selected_top_level_operation = tk.StringVar(value="GET_DATA")
-        # REMOVED "Filter & Sort Data" from the list of operations
+        # Added "Filter & Sort Data" back to the list of operations
         operations = [
             ("Query Last 3 Data", "GET_DATA"), ("Query Data by ID", "QUERY_DATA_BY_ID"),
-            ("Remove Data by ID", "REMOVE_DATA_BY_ID"), ("Perform Statistics", "PERFORM_STATS")
+            ("Remove Data by ID", "REMOVE_DATA_BY_ID"), ("Perform Statistics", "PERFORM_STATS"),
+            ("Filter & Sort Data", "QUERY_FILTERED_SORTED")
         ]
         for i, (text, value) in enumerate(operations):
             rb = ttk.Radiobutton(
@@ -76,23 +79,21 @@ class ZeroMQGUIClient(ttk.Window):
                 value=value, command=self._toggle_input_fields, 
                 bootstyle="info-round-toggle"
             )
-            rb.grid(row=i // 2, column=i % 2, padx=5, pady=2, sticky="w")
-        for i in range(2): top_level_operation_frame.grid_columnconfigure(i, weight=1)
+            rb.grid(row=i // 3, column=i % 3, padx=5, pady=2, sticky="w")
+        for i in range(3): top_level_operation_frame.grid_columnconfigure(i, weight=1)
 
-        # This frame holds all possible data structure radio buttons
+        # --- Frames for different operations ---
         self.data_structure_selection_frame = ttk.Labelframe(left_frame, text="Select Data Structure", padding="10")
         self.selected_data_structure = tk.StringVar(value="AVL")
         all_ds_options = [
             ("AVL Tree", "AVL"), ("Linked List", "LINKED_LIST"), ("Hashset", "HASHSET"),
-            ("Cuckoo Hash", "CUCKOO_HASH"), ("Segment Tree", "SEGMENT_TREE"), ("Red-Black Tree", "RED_BLACK_TREE"),
-            ("Skip List", "SKIP_LIST")
+            ("Cuckoo Hash", "CUCKOO_HASH"), ("Segment Tree", "SEGMENT_TREE"), ("Red-Black Tree", "RED_BLACK_TREE")
         ]
         self.ds_radio_buttons = {}
         for i, (text, value) in enumerate(all_ds_options):
             rb = ttk.Radiobutton(
                 self.data_structure_selection_frame, text=text, variable=self.selected_data_structure,
                 value=value, bootstyle="info-round-toggle")
-            # Place them in the grid initially; their visibility will be managed by _toggle_input_fields
             rb.grid(row=i // 3, column=i % 3, padx=5, pady=2, sticky="w")
             self.ds_radio_buttons[value] = rb
         for i in range(3): self.data_structure_selection_frame.grid_columnconfigure(i, weight=1)
@@ -119,8 +120,38 @@ class ZeroMQGUIClient(ttk.Window):
         self.interval_entry.insert(0, "100")
         self.interval_entry.grid(row=1, column=1, padx=(0, 10), pady=2, sticky="ew")
 
-        # The filter_sort_frame has been completely removed.
+        # --- NEW: Frame for Filtering and Sorting ---
+        self.filter_sort_frame = ttk.Labelframe(left_frame, text="Filter & Sort Options", padding="10")
+        # Filter options
+        ttk.Label(self.filter_sort_frame, text="Filter By:", font="-weight bold").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 5))
+        self.filter_label_var = tk.StringVar(value="any")
+        ttk.Label(self.filter_sort_frame, text="Label:").grid(row=1, column=0, sticky="w")
+        ttk.Combobox(self.filter_sort_frame, textvariable=self.filter_label_var, values=["any", "attack", "normal"], state="readonly").grid(row=1, column=1, sticky="ew", pady=2)
+        
+        self.filter_proto_var = tk.StringVar(value="Any")
+        ttk.Label(self.filter_sort_frame, text="Protocol:").grid(row=2, column=0, sticky="w")
+        ttk.Combobox(self.filter_sort_frame, textvariable=self.filter_proto_var, values=list(self.protocol_filter_map.keys()), state="readonly").grid(row=2, column=1, sticky="ew", pady=2)
+        
+        # Sort options
+        ttk.Label(self.filter_sort_frame, text="Sort By:", font="-weight bold").grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 5))
+        self.sort_by_var = tk.StringVar(value="ID")
+        ttk.Label(self.filter_sort_frame, text="Field:").grid(row=4, column=0, sticky="w")
+        ttk.Combobox(self.filter_sort_frame, textvariable=self.sort_by_var, values=list(self.sort_features_map.keys()), state="readonly").grid(row=4, column=1, sticky="ew", pady=2)
 
+        self.sort_order_var = tk.StringVar(value="asc")
+        ttk.Label(self.filter_sort_frame, text="Order:").grid(row=5, column=0, sticky="w")
+        ttk.Combobox(self.filter_sort_frame, textvariable=self.sort_order_var, values=["asc", "desc"], state="readonly").grid(row=5, column=1, sticky="ew", pady=2)
+        
+        # Limit results
+        self.limit_var = tk.StringVar(value="20")
+        ttk.Label(self.filter_sort_frame, text="Limit:").grid(row=6, column=0, sticky="w", pady=(10,0))
+        ttk.Entry(self.filter_sort_frame, textvariable=self.limit_var).grid(row=6, column=1, sticky="ew", pady=(10,0))
+
+
+        self.filter_sort_frame.grid_columnconfigure(1, weight=1)
+
+
+        # --- Control and Log frames ---
         control_frame = ttk.Frame(left_frame)
         control_frame.pack(fill=X, pady=(5, 10))
         self.status_label = ttk.Label(control_frame, text=f"C++ Server: {self.cpp_server_address}", bootstyle="info")
@@ -165,38 +196,24 @@ class ZeroMQGUIClient(ttk.Window):
 
     def _toggle_input_fields(self):
         selected_main_op = self.selected_top_level_operation.get()
-        
         # --- Start by hiding all optional frames and widgets ---
         self.input_fields_frame.pack_forget()
         self.stats_options_frame.pack_forget()
         self.data_structure_selection_frame.pack_forget()
-        # The filter frame was removed, so no need to forget it.
+        self.filter_sort_frame.pack_forget() # Hide the filter frame
         
-        # Explicitly hide all data structure radio buttons.
-        # This is the key to ensuring only the correct ones are shown later.
-        for rb in self.ds_radio_buttons.values():
-            rb.grid_remove()
-
         # --- Selectively show frames and widgets based on the main operation ---
         if selected_main_op in ["QUERY_DATA_BY_ID", "REMOVE_DATA_BY_ID"]:
             self.input_fields_frame.pack(fill=X, pady=(0, 10))
             self.data_structure_selection_frame.pack(fill=X, pady=(0, 10))
-            # Re-grid ALL radio buttons for this view
-            for i, (key, rb) in enumerate(self.ds_radio_buttons.items()):
-                rb.grid(row=i // 3, column=i % 3, padx=5, pady=2, sticky="w")
         
         elif selected_main_op == "PERFORM_STATS":
             self.stats_options_frame.pack(fill=X, pady=(0, 10))
             self.data_structure_selection_frame.pack(fill=X, pady=(0, 10))
-            # Re-grid ONLY the specific radio buttons for statistics
-            stats_ds_options = ["SEGMENT_TREE", "LINKED_LIST"]
-            for i, value in enumerate(stats_ds_options):
-                if value in self.ds_radio_buttons:
-                     self.ds_radio_buttons[value].grid(row=0, column=i, padx=5, pady=2, sticky="w")
-            
-            # Ensure the default selection is one of the visible options
-            if self.selected_data_structure.get() not in stats_ds_options:
-                self.selected_data_structure.set("LINKED_LIST")
+        
+        elif selected_main_op == "QUERY_FILTERED_SORTED":
+            self.filter_sort_frame.pack(fill=X, pady=(0,10))
+
 
     def _log_message(self, message, prefix="[LOG]", bootstyle="default"):
         self.log_text.text.configure(state="normal")
@@ -231,10 +248,34 @@ class ZeroMQGUIClient(ttk.Window):
             ds_num = self.data_structure_map.get(self.selected_data_structure.get())
             request_payload += f" {feature_enum} {interval} {ds_num}"
         
-        # REMOVED the elif block for QUERY_FILTERED_SORTED
+        elif main_operation == "QUERY_FILTERED_SORTED":
+            params = []
+            # Label filter
+            label_filter = self.filter_label_var.get()
+            if label_filter == "attack": params.append("label=true")
+            elif label_filter == "normal": params.append("label=false")
+            
+            # Protocol filter
+            proto_filter_key = self.filter_proto_var.get()
+            proto_filter_val = self.protocol_filter_map.get(proto_filter_key)
+            if proto_filter_val != "any": params.append(f"proto={proto_filter_val}")
+            
+            # Sorting
+            sort_by_key = self.sort_by_var.get()
+            sort_by_val = self.sort_features_map.get(sort_by_key)
+            sort_order = self.sort_order_var.get()
+            params.append(f"sort_by={sort_by_val}")
+            params.append(f"sort_order={sort_order}")
+            
+            # Limit
+            limit_val = self.limit_var.get()
+            if limit_val.isdigit() and int(limit_val) > 0:
+                params.append(f"limit={limit_val}")
+
+            request_payload += " " + " ".join(params)
         
         elif main_operation == "GET_DATA":
-            pass # No additional payload needed
+            pass 
 
         else:
             messagebox.showwarning("Operation Error", f"Unexpected operation selected: {main_operation}")
