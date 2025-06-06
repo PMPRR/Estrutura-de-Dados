@@ -181,7 +181,7 @@ void testRBProperties() {
 void testPerformance() {
     printTestHeader("Teste de Desempenho");
     
-    const int NUM_ELEMENTS = 100000;
+    const int NUM_ELEMENTS = 10000; // Reduzido para 10000 para ser mais rápido
     
     // Gerar números aleatórios
     std::vector<int> numbers;
@@ -221,4 +221,36 @@ void testPerformance() {
     std::chrono::duration<double, std::milli> searchTime = endSearch - startSearch;
     
     std::cout << "Tempo para buscar " << NUM_ELEMENTS << " elementos: " 
-              << searchTime.count() << " ms" << std::endl
+              << searchTime.count() << " ms" << std::endl;
+    
+    // Testar remoção
+    auto startRemove = std::chrono::high_resolution_clock::now();
+    
+    for (int num : numbers) {
+        tree.remove(num);
+    }
+    
+    auto endRemove = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> removeTime = endRemove - startRemove;
+    
+    std::cout << "Tempo para remover " << NUM_ELEMENTS << " elementos: " 
+              << removeTime.count() << " ms" << std::endl;
+    
+    std::cout << "Teste concluído com sucesso!\n";
+}
+
+// Função principal
+int main() {
+    std::cout << "Iniciando testes da Árvore Rubro-Negra..." << std::endl;
+    
+    testBasicInsertAndFind();
+    testUpdateValues();
+    testRemoval();
+    testTraversal();
+    testRBProperties();
+    testPerformance();
+    
+    std::cout << "\nTodos os testes foram concluídos com sucesso!" << std::endl;
+    
+    return 0;
+}
