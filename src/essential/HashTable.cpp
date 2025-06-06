@@ -1,19 +1,17 @@
-#include "essential/HashTable.h"
-#include <iostream> // For debug/error output
+#include "essential/HashTable.h" // Correct header for THIS HashTable.cpp
+#include <iostream> // For potential debug/error output
+#include <functional> // For std::hash
 
 HashTable::HashTable(size_t capacidade)
     : table(capacidade), itemCount(0) {}
 
 HashTable::~HashTable() {
-    clear(); // Clear nodes, but Data* ownership is external
+    clear();
 }
 
-// Simple hash function for uint32_t
+// Simple hash function for uint32_t using std::hash
 size_t HashTable::hash(uint32_t key) const {
-    // A simple multiplicative hash or XOR folding could be better for integers.
-    // For now, a basic modulo operation.
-    // Ensure the hash disperses values well across table.size().
-    return key % table.size();
+    return std::hash<uint32_t>{}(key) % table.size();
 }
 
 void HashTable::insert(const Data* data) {
@@ -25,7 +23,7 @@ void HashTable::insert(const Data* data) {
     size_t idx = hash(data->id);
     // Check if key (data->id) already exists and update value (data pointer)
     for (auto &node : table[idx]) {
-        if (node.data && node.data->id == data->id) {
+        if (node.data && node.data->id == data->id) { // Check for null data pointer too
             node.data = data; // Update the pointer to the new Data object
             return;
         }

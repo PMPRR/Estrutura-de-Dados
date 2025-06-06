@@ -20,7 +20,8 @@
 #include "data.h"                  // The Data struct definition
 #include "essential/AVL.h"         // Include for AVL tree
 #include "essential/LinkedList.h"  // Include for DoublyLinkedList
-#include "essential/HashTable.h"   // Include for HashTable
+#include "essential/HashTable.h"   // Include for Chaining HashTable (if still used)
+#include "extra/CuckooHashTable.h" // Include for CuckooHashTable
 
 // Global atomic boolean to signal termination for all loops
 std::atomic<bool> keep_running(true);
@@ -63,8 +64,8 @@ std::string format_data_as_table(const Data& data_item) {
     oss << "Source Jitter (ms): " << data_item.sjit << "\n";
     oss << "Dest Jitter (ms): " << data_item.djit << "\n";
     oss << "TCP RTT (s): " << data_item.tcprtt << "\n";
-    oss << "SYN-ACK Time (s): " << data_item.synack << "\n";
-    oss << "ACK/Data Time (s): " << data_item.ackdat << "\n";
+    oss << "SYN-ACK Time (synack) (s): " << data_item.synack << "\n"; // Corrected field name
+    oss << "ACK/Data Time (ackdat) (s): " << data_item.ackdat << "\n"; // Corrected field name
     oss << "Source Packets:  " << data_item.spkts << "\n";
     oss << "Dest Packets: " << data_item.dpkts << "\n";
     oss << "Source Bytes: " << data_item.sbytes << "\n";
@@ -72,7 +73,7 @@ std::string format_data_as_table(const Data& data_item) {
     oss << "Source TTL: " << static_cast<int>(data_item.sttl) << "\n";
     oss << "Dest TTL: " << static_cast<int>(data_item.dttl) << "\n";
     oss << "Source Loss: " << data_item.sloss << "\n";
-    oss << "Dest Loss:  " << data_item.dloss << "\n"; // Added space for alignment
+    oss << "Dest Loss:  " << data_item.dloss << "\n";
     oss << "Source Win: " << data_item.swin << "\n";
     oss << "Source TCP Seq Base: " << data_item.stcpb << "\n";
     oss << "Dest TCP Seq Base: " << data_item.dtcpb << "\n";
@@ -152,11 +153,13 @@ int main() {
     // --- Instantiate Data Structures ---
     AVL avl_tree;
     DoublyLinkedList doubly_linked_list; // Instantiate DoublyLinkedList
-    HashTable hash_table;                // Instantiate HashTable
+    HashTable hash_table;                // Instantiate Chaining HashTable (if still used)
+    CuckooHashTable cuckoo_hash_table;   // Instantiate CuckooHashTable
     
     const int AVL_DS_ID = 1;             // Corresponds to "AVL" in gui.py's data_structure_map
     const int LINKED_LIST_DS_ID = 2;     // Corresponds to "LINKED_LIST" in gui.py's data_structure_map
     const int HASHTABLE_DS_ID = 3;       // Corresponds to "HASHSET" in gui.py's data_structure_map
+    const int CUCKOO_HASH_DS_ID = 4;     // Corresponds to "CUCKOO_HASH" in gui.py's data_structure_map
 
 
     // --- Setup DataReceiver (Subscriber to python_publisher) ---
@@ -217,13 +220,15 @@ int main() {
                 avl_tree.insert(data_to_insert); 
                 // Insert into DoublyLinkedList
                 doubly_linked_list.append(data_to_insert);
-                // Insert into HashTable
+                // Insert into Chaining HashTable (if still used)
                 hash_table.insert(data_to_insert);
+                // Insert into Cuckoo HashTable
+                cuckoo_hash_table.insert(data_to_insert);
 
             }
             last_processed_data_collector_count = current_received_count;
             std::cout << "[Main] Master data store size: " << master_data_store.size() << " items." << std::endl;
-            std::cout << "[Main] AVL tree, Linked List, and Hash Table updated with new data." << std::endl;
+            std::cout << "[Main] AVL tree, Linked List, Chaining Hash Table, and Cuckoo Hash Table updated with new data." << std::endl;
         }
 
         // --- Handle GUI requests (REP socket) ---
@@ -313,12 +318,19 @@ int main() {
                         } else {
                             reply_str = "No data with ID " + std::to_string(id_to_query) + " found in Linked List.";
                         }
-                    } else if (ds_id == HASHTABLE_DS_ID) { // Check if the requested DS is Hash Table
+                    } else if (ds_id == HASHTABLE_DS_ID) { // Check if the requested DS is Chaining Hash Table
                         const Data* found_data = hash_table.find(id_to_query);
                         if (found_data != nullptr) {
                             reply_str = format_data_as_table(*found_data);
                         } else {
-                            reply_str = "No data with ID " + std::to_string(id_to_query) + " found in Hash Table.";
+                            reply_str = "No data with ID " + std::to_string(id_to_query) + " found in Chaining Hash Table.";
+                        }
+                    } else if (ds_id == CUCKOO_HASH_DS_ID) { // Check if the requested DS is Cuckoo Hash Table
+                        const Data* found_data = cuckoo_hash_table.search(id_to_query);
+                        if (found_data != nullptr) {
+                            reply_str = format_data_as_table(*found_data);
+                        } else {
+                            reply_str = "No data with ID " + std::to_string(id_to_query) + " found in Cuckoo Hash Table.";
                         }
                     }
                     else {
@@ -365,9 +377,14 @@ int main() {
                             doubly_linked_list.removeById(id_to_remove);
                             removed_from_ds = true;
                         }
-                    } else if (ds_id == HASHTABLE_DS_ID) { // Remove from Hash Table
+                    } else if (ds_id == HASHTABLE_DS_ID) { // Remove from Chaining Hash Table
                          if (hash_table.find(id_to_remove) != nullptr) {
                             hash_table.remove(id_to_remove);
+                            removed_from_ds = true;
+                        }
+                    } else if (ds_id == CUCKOO_HASH_DS_ID) { // Remove from Cuckoo Hash Table
+                         if (cuckoo_hash_table.search(id_to_remove) != nullptr) {
+                            cuckoo_hash_table.remove(id_to_remove);
                             removed_from_ds = true;
                         }
                     }

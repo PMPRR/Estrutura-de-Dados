@@ -1,158 +1,165 @@
-#include <map>
-#include <iostream>
-#include <vector>
-#include <optional>
+#include "extra/CuckooHashTable.h" // Correct header for CuckooHashTable implementation
 #include <cmath>
-#include "data.h"
+#include <vector>
+#include <utility>   // For std::swap
+#include <stdexcept> // For std::runtime_error if needed, though replaced with cerr
+#include <iostream>  // For std::cerr, std::cout
 
-#define TABLE_SIZE 101
-
-// Conversão de Attack_cat para string
-inline std::string attackCatToString(Attack_cat cat) {
-    switch (cat) {
-        case Attack_cat::NORMAL: return "Normal";
-        case Attack_cat::GENERIC: return "Generic";
-        case Attack_cat::EXPLOITS: return "Exploits";
-        case Attack_cat::FUZZERS: return "Fuzzers";
-        case Attack_cat::DOS: return "DoS";
-        case Attack_cat::ANALYSIS: return "Analysis";
-        case Attack_cat::RECONNAISSANCE: return "Reconnaissance";
-        case Attack_cat::BACKDOOR: return "Backdoor";
-        case Attack_cat::SHELLCODE: return "Shellcode";
-        case Attack_cat::WORMS: return "Worms";
-        default: return "Unknown";
-    }
+CuckooHashTable::CuckooHashTable(size_t initial_capacity)
+    : capacity(initial_capacity), size(0) {
+    // Ensure capacity is not zero or too small
+    if (capacity == 0) capacity = 1;
+    // Cuckoo hashing often benefits from prime capacities, or capacities not powers of 2.
+    // If you need specific prime logic, you can add it here.
+    table1.assign(capacity, Entry()); // Initialize with empty entries (nullptr)
+    table2.assign(capacity, Entry()); // Initialize with empty entries (nullptr)
+    max_loop = std::log2(capacity) * 2 + 1; // A common heuristic for max kicks
+    if (max_loop < 10) max_loop = 10; // Ensure a reasonable minimum
 }
 
-
-// Sobrecarga do operador <<
-inline std::ostream& operator<<(std::ostream& os, Attack_cat cat) {
-    return os << attackCatToString(cat);
+// Simple hash function for uint32_t
+size_t CuckooHashTable::hash1(uint32_t key) const {
+    return key % capacity;
 }
 
-class CuckooHashTable {
-private:
-    std::vector<std::optional<Data>> table1;
-    std::vector<std::optional<Data>> table2;
-    int maxKickCount;
+// A different hash function is critical for Cuckoo Hashing.
+// Using a simple division and modulo, or a different prime, or bitwise operations.
+// For now, a simple arithmetic one to ensure it's distinct from hash1.
+size_t CuckooHashTable::hash2(uint32_t key) const {
+    // A simple multiplicative hash part can help improve distribution,
+    // even before the modulo. This constant is a common choice.
+    uint32_t c = 2654435769; // A large prime-like number
+    return (key * c) % capacity;
+}
 
-    int hash1(uint32_t key) const {
-        return key % TABLE_SIZE;
+void CuckooHashTable::rehash() {
+    size_t old_capacity = capacity;
+    capacity = capacity * 2 + 1; // Double and add 1 to aim for an odd/prime-like new capacity
+    max_loop = std::log2(capacity) * 2 + 1; // Update max kicks for new capacity
+    if (max_loop < 10) max_loop = 10;
+
+    std::vector<Entry> old_table1; // Use temporary vectors to hold old entries
+    old_table1.reserve(old_capacity);
+    for(const auto& entry : table1) {
+        if(entry.data != nullptr) old_table1.push_back(entry);
     }
 
-    int hash2(uint32_t key) const {
-        return (key / TABLE_SIZE) % TABLE_SIZE;
+    std::vector<Entry> old_table2;
+    old_table2.reserve(old_capacity);
+    for(const auto& entry : table2) {
+        if(entry.data != nullptr) old_table2.push_back(entry);
     }
+    
+    table1.assign(capacity, Entry()); // Resize and clear with new capacity
+    table2.assign(capacity, Entry());
+    size = 0; // Reset size, will be incremented by insert
 
-    void rehash() {
-        std::vector<std::optional<Data>> oldTable1 = table1;
-        std::vector<std::optional<Data>> oldTable2 = table2;
-
-        table1.assign(TABLE_SIZE, std::nullopt);
-        table2.assign(TABLE_SIZE, std::nullopt);
-
-        for (const auto& item : oldTable1) {
-            if (item.has_value()) {
-                insert(item->id, item.value());
-            }
-        }
-        for (const auto& item : oldTable2) {
-            if (item.has_value()) {
-                insert(item->id, item.value());
-            }
-        }
+    // Re-insert all elements from old tables into the new, larger tables
+    for (const auto& entry : old_table1) {
+        insert(entry.data); // This insert will handle potential kicks/cycles in new tables
     }
-
-public:
-    CuckooHashTable() : table1(TABLE_SIZE), table2(TABLE_SIZE), maxKickCount(32) {}
-
-    void insert(uint32_t id, const Data& value) {
-        Data toInsert = value;
-        int kickCount = 0;
-
-        while (kickCount < maxKickCount) {
-            int h1 = hash1(toInsert.id);
-            if (!table1[h1].has_value()) {
-                table1[h1] = toInsert;
-                return;
-            }
-
-            std::swap(toInsert, table1[h1].value());
-
-            int h2 = hash2(toInsert.id);
-            if (!table2[h2].has_value()) {
-                table2[h2] = toInsert;
-                return;
-            }
-
-            std::swap(toInsert, table2[h2].value());
-            kickCount++;
-        }
-
-        std::cerr << "Rehashing needed for ID " << id << std::endl;
-        rehash();
-        insert(id, value); // reinserir após rehash
+    for (const auto& entry : old_table2) {
+        insert(entry.data); // This insert will handle potential kicks/cycles in new tables
     }
+    std::cout << "[CuckooHashTable] Rehashing complete. Old capacity: " << old_capacity << ", New capacity: " << capacity << ", max_loop: " << max_loop << std::endl;
+}
 
-    std::optional<Data> search(uint32_t id) const {
-        int h1 = hash1(id);
-        if (table1[h1].has_value() && table1[h1]->id == id) {
-            return table1[h1];
-        }
-
-        int h2 = hash2(id);
-        if (table2[h2].has_value() && table2[h2]->id == id) {
-            return table2[h2];
-        }
-
-        return std::nullopt;
-    }
-
-    bool remove(uint32_t id) {
-        int h1 = hash1(id);
-        if (table1[h1].has_value() && table1[h1]->id == id) {
-            table1[h1] = std::nullopt;
-            return true;
-        }
-
-        int h2 = hash2(id);
-        if (table2[h2].has_value() && table2[h2]->id == id) {
-            table2[h2] = std::nullopt;
-            return true;
-        }
-
+bool CuckooHashTable::insert(const Data* data) {
+    if (data == nullptr) {
+        std::cerr << "Error: Attempted to insert a nullptr Data into CuckooHashTable." << std::endl;
         return false;
     }
 
-    void printStatsByAttackCategory() const {
-        std::map<Attack_cat, std::vector<Data>> groups;
-
-        auto addToGroup = [&](const std::optional<Data>& entry) {
-            if (entry.has_value()) {
-                groups[entry->attack_category].push_back(entry.value());
-            }
-        };
-
-        for (const auto& entry : table1) addToGroup(entry);
-        for (const auto& entry : table2) addToGroup(entry);
-
-        for (const auto& [category, entries] : groups) {
-            int count = entries.size();
-            double sum = 0, sum_sq = 0;
-
-            for (const auto& d : entries) {
-                sum += d.sload;
-                sum_sq += d.sload * d.sload;
-            }
-
-            double mean = sum / count;
-            double variance = (sum_sq / count) - (mean * mean);
-            double std_dev = std::sqrt(variance);
-
-            std::cout << "Categoria: " << category << "\n";
-            std::cout << " - Quantidade: " << count << "\n";
-            std::cout << " - Média sload: " << mean << "\n";
-            std::cout << " - Desvio padrão sload: " << std_dev << "\n\n";
-        }
+    // Check if key (data->id) already exists and update its pointer
+    // This avoids adding duplicates and ensures the latest pointer is used.
+    size_t pos1_check = hash1(data->id);
+    if (table1[pos1_check].data != nullptr && table1[pos1_check].data->id == data->id) {
+        table1[pos1_check].data = data; // Update pointer
+        return true;
     }
-};
+    size_t pos2_check = hash2(data->id);
+    if (table2[pos2_check].data != nullptr && table2[pos2_check].data->id == data->id) {
+        table2[pos2_check].data = data; // Update pointer
+        return true;
+    }
+
+    const Data* current_data_to_place = data; // The item we are trying to insert (or kick)
+    size_t loop_count = 0;
+
+    for (; loop_count < max_loop; ++loop_count) {
+        // Try to place in table 1
+        size_t pos1 = hash1(current_data_to_place->id);
+        if (table1[pos1].data == nullptr) { // Slot is empty
+            table1[pos1].data = current_data_to_place;
+            ++size;
+            return true;
+        }
+        std::swap(current_data_to_place, table1[pos1].data); // Kick out existing, try to insert current_data_to_place
+
+        // Try to place in table 2
+        size_t pos2 = hash2(current_data_to_place->id);
+        if (table2[pos2].data == nullptr) { // Slot is empty
+            table2[pos2].data = current_data_to_place;
+            ++size;
+            return true;
+        }
+        std::swap(current_data_to_place, table2[pos2].data); // Kick out existing, try to insert current_data_to_place
+    }
+
+    // If loop_count reaches max_loop, a cycle was detected or max kicks were exceeded.
+    // Rehash and try inserting the problematic item again (this recursive call will succeed).
+    std::cerr << "[CuckooHashTable] Max kicks reached for ID " << current_data_to_place->id << ". Initiating rehash." << std::endl;
+    rehash();
+    return insert(current_data_to_place); // Re-attempt insertion of the item that caused the cycle
+}
+
+bool CuckooHashTable::remove(uint32_t id) {
+    size_t pos1 = hash1(id);
+    if (table1[pos1].data != nullptr && table1[pos1].data->id == id) {
+        table1[pos1].data = nullptr; // Set to nullptr to indicate empty slot
+        --size;
+        return true;
+    }
+
+    size_t pos2 = hash2(id);
+    if (table2[pos2].data != nullptr && table2[pos2].data->id == id) {
+        table2[pos2].data = nullptr; // Set to nullptr to indicate empty slot
+        --size;
+        return true;
+    }
+
+    return false; // Item not found
+}
+
+const Data* CuckooHashTable::search(uint32_t id) {
+    size_t pos1 = hash1(id);
+    if (table1[pos1].data != nullptr && table1[pos1].data->id == id) {
+        return table1[pos1].data;
+    }
+
+    size_t pos2 = hash2(id);
+    if (table2[pos2].data != nullptr && table2[pos2].data->id == id) {
+        return table2[pos2].data;
+    }
+
+    return nullptr; // Item not found
+}
+
+bool CuckooHashTable::contains(uint32_t id) const {
+    size_t pos1 = hash1(id);
+    if (table1[pos1].data != nullptr && table1[pos1].data->id == id) return true;
+
+    size_t pos2 = hash2(id);
+    if (table2[pos2].data != nullptr && table2[pos2].data->id == id) return true;
+
+    return false;
+}
+
+size_t CuckooHashTable::getSize() const {
+    return size;
+}
+
+size_t CuckooHashTable::getCapacity() const {
+    return capacity;
+}
+
