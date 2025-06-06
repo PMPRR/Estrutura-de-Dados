@@ -5,7 +5,7 @@
 #include <algorithm> // For std::min
 #include <cstring>   // For strlen, strncmp
 #include <cctype>    // For isprint
-#include <vector>    // For std::vector (if needed for some helper, but not for collected_data_)
+#include <vector>    // Required for std::vector in getCollectedDataCopy
 #include <zmq.h>     // Include C API for ZMQ_ constants like ETERM
 #include <thread>    // For std::this_thread::sleep_for
 #include <chrono>    // For std::chrono::seconds
@@ -21,7 +21,9 @@ DataReceiver::DataReceiver(const std::string& publisher_address,
       data_prefix_to_process_(data_prefix_to_process),
       running_(false),
       successfully_started_(false),
-      current_data_count_(0) {
+      head_(0),
+      tail_(0),
+      data_ready_(0) {
 }
 
 // Destructor
@@ -45,7 +47,6 @@ DataReceiver::~DataReceiver() {
                  }
             }
         }
-        // Destructors of subscriber_socket_ and context_ will handle their cleanup.
     } catch (const zmq::error_t& e) {
         std::cerr << "[DataReceiver] Exception during ZMQ cleanup: " << e.what() << std::endl;
     } catch (const std::exception& e) {
@@ -128,10 +129,40 @@ void DataReceiver::join() {
     }
 }
 
-// Retrieves a shallow view of the collected data.
-std::pair<const Data*, size_t> DataReceiver::getCollectedData() const {
-    std::lock_guard<std::mutex> lock(data_mutex_);
-    return {collected_data_array_.data(), current_data_count_.load()};
+// Retrieves a view of a contiguous block of currently collected data.
+// The second element of the pair indicates the number of items in this contiguous block.
+// Returns {nullptr, 0} if no data is available.
+std::pair<const Data*, size_t> DataReceiver::getCollectedDataView() const {
+    std::lock_guard<std::mutex> lock(buffer_mutex_); // Protects head_ and data_ready_ for consistent view
+    if (data_ready_.load() == 0) {
+        return {nullptr, 0};
+    }
+    
+    // Calculate the number of contiguous items from head_ to the end of the array,
+    // or until all available data is accounted for.
+    size_t num_contiguous_items = DATA_RECEIVER_CAPACITY - head_.load();
+    if (num_contiguous_items > data_ready_.load()) {
+        num_contiguous_items = data_ready_.load();
+    }
+    
+    return {&collected_data_array_[head_], num_contiguous_items};
+}
+
+// Marks 'count' data items as consumed from the beginning of the unread data.
+// This effectively frees up space in the circular buffer.
+void DataReceiver::markDataAsConsumed(size_t count) {
+    std::lock_guard<std::mutex> lock(buffer_mutex_);
+    if (count > data_ready_.load()) {
+        std::cerr << "[DataReceiver ERROR] Attempted to consume more data than available. Consuming all " 
+                  << data_ready_.load() << " available items." << std::endl;
+        count = data_ready_.load(); // Cap count to available data
+    }
+    head_ = (head_ + count) % DATA_RECEIVER_CAPACITY;
+    data_ready_ -= count;
+
+    // Optional debug print for buffer state
+    // std::cout << "[DEBUG DataReceiver] Consumed " << count << " items. head: " << head_.load() 
+    //           << ", tail: " << tail_.load() << ", data_ready: " << data_ready_.load() << std::endl;
 }
 
 // Checks if the receiver is running
@@ -171,37 +202,26 @@ void DataReceiver::receiveLoop() {
         }
 
         if (recv_ok && received_message.size() > 0) {
-            // std::cout << "[DataReceiver DEBUG] Message received. Size: " << received_message.size() << std::endl;
-            // if (received_message.size() < 50) print_message_details(received_message, "[DataReceiver DEBUG] Raw content of received_message");
-
-
             const char* payload_to_process_ptr = nullptr;
             size_t payload_to_process_size = 0;
             bool is_valid_payload = false;
 
             if (!zmq_topic_filter_.empty()) {
-                // If a ZMQ topic filter is used, the received_message *should* be the payload.
-                // However, we're observing it might sometimes be the topic string itself.
                 if (received_message.size() == zmq_topic_filter_.length()) {
                     std::string content(static_cast<const char*>(received_message.data()), received_message.size());
                     if (content == zmq_topic_filter_) {
-                        // This was just the topic frame, ignore it. The actual data should follow.
-                        // std::cout << "[DataReceiver DEBUG] Received message was topic frame. Ignoring." << std::endl;
                         is_valid_payload = false; 
                     } else {
-                        // Size matches topic length, but content doesn't. Treat as payload.
                         payload_to_process_ptr = static_cast<const char*>(received_message.data());
                         payload_to_process_size = received_message.size();
                         is_valid_payload = true;
                     }
                 } else {
-                    // Size does not match topic length, assume it's the actual payload.
                     payload_to_process_ptr = static_cast<const char*>(received_message.data());
                     payload_to_process_size = received_message.size();
                     is_valid_payload = true;
                 }
             } else {
-                // NO ZMQ topic filter - use internal prefix checking
                 size_t data_prefix_len = data_prefix_to_process_.length();
                 if (data_prefix_len > 0) {
                     if (received_message.size() > data_prefix_len && received_message.data<char>()[data_prefix_len] == ' ' &&
@@ -211,7 +231,7 @@ void DataReceiver::receiveLoop() {
                         payload_to_process_size = received_message.size() - (data_prefix_len + 1);
                         is_valid_payload = true;
                     }
-                } else { // No ZMQ filter AND no internal prefix, process everything
+                } else { 
                     payload_to_process_ptr = static_cast<const char*>(received_message.data());
                     payload_to_process_size = received_message.size();
                     is_valid_payload = true;
@@ -219,22 +239,34 @@ void DataReceiver::receiveLoop() {
             }
 
             if (is_valid_payload && payload_to_process_ptr) {
-                // std::cout << "[DataReceiver DEBUG] Processing valid payload. Size: " << payload_to_process_size << std::endl;
                 if (sizeof(Data) == 0) {
                     std::cerr << "[DataReceiver] Error: sizeof(Data) is 0. Ensure 'data.h' is correct." << std::endl;
                 } else if (payload_to_process_size > 0 && payload_to_process_size % sizeof(Data) == 0) {
-                    size_t num_structs = payload_to_process_size / sizeof(Data);
-                    std::lock_guard<std::mutex> lock(data_mutex_);
-                    if (current_data_count_.load() + num_structs > DATA_RECEIVER_CAPACITY) {
-                        std::cerr << "[DataReceiver] Warning: Not enough capacity. Dropping "
-                                  << (current_data_count_.load() + num_structs - DATA_RECEIVER_CAPACITY) << " structs." << std::endl;
-                        num_structs = DATA_RECEIVER_CAPACITY - current_data_count_.load(); 
+                    size_t num_structs_in_payload = payload_to_process_size / sizeof(Data);
+                    std::lock_guard<std::mutex> lock(buffer_mutex_); 
+
+                    // Number of contiguous slots from current tail_ to end of array
+                    size_t contiguous_free_slots_at_end = DATA_RECEIVER_CAPACITY - tail_.load();
+                    // Number of slots available before wrapping around (or hitting head_)
+                    size_t total_free_slots = DATA_RECEIVER_CAPACITY - data_ready_.load();
+                    
+                    size_t structs_to_copy = std::min(num_structs_in_payload, total_free_slots);
+
+                    if (structs_to_copy == 0 && num_structs_in_payload > 0) {
+                         std::cerr << "[DataReceiver] Warning: Buffer FULL. Dropping "
+                                   << num_structs_in_payload << " structs (tail: " << tail_.load() << ", head: " << head_.load() << ", data_ready: " << data_ready_.load() << ")." << std::endl;
+                    } else if (structs_to_copy < num_structs_in_payload) {
+                         std::cerr << "[DataReceiver] Warning: Buffer NEARLY FULL. Dropping "
+                                   << (num_structs_in_payload - structs_to_copy) << " structs (tail: " << tail_.load() << ", head: " << head_.load() << ", data_ready: " << data_ready_.load() << ")." << std::endl;
                     }
 
-                    if (num_structs > 0) { 
-                        std::memcpy(&collected_data_array_[current_data_count_.load()], payload_to_process_ptr, num_structs * sizeof(Data));
-                        current_data_count_ += num_structs;
-                        // std::cout << "[DataReceiver DEBUG] Added " << num_structs << " structs. Total: " << current_data_count_.load() << std::endl;
+                    if (structs_to_copy > 0) { 
+                        // Copy data into the circular buffer
+                        for (size_t i = 0; i < structs_to_copy; ++i) {
+                            collected_data_array_[tail_] = *(reinterpret_cast<const Data*>(payload_to_process_ptr) + i);
+                            tail_ = (tail_ + 1) % DATA_RECEIVER_CAPACITY;
+                        }
+                        data_ready_ += structs_to_copy;
                     }
                 } else if (payload_to_process_size != 0) { 
                     std::cerr << "[DataReceiver] Error: Received data payload size (" << payload_to_process_size

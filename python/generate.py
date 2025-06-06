@@ -20,7 +20,7 @@ except ImportError as e:
 
 # --- GAN Model Configuration ---
 SAVED_MODEL_FILEPATH = "sdv_ctgan_unsw2_model.pkl"
-NUM_SYNTHETIC_SAMPLES = 10
+NUM_SYNTHETIC_SAMPLES = 200
 
 # --- Define the binary format string based on data.h constructor ---
 DATA_STRUCT_FORMAT = (

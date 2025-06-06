@@ -27,9 +27,11 @@ class ZeroMQGUIClient(ttk.Window):
         self.zmq_context = zmq.Context()
         self.stop_event = threading.Event()
 
+        # Updated: Added "SKIPLIST" with ID 7
         self.data_structure_map = {
             "AVL": 1, "LINKED_LIST": 2, "HASHSET": 3,
-            "CUCKOO_HASH": 4, "SEGMENT_TREE": 5, "RED_BLACK_TREE": 6
+            "CUCKOO_HASH": 4, "SEGMENT_TREE": 5, "RED_BLACK_TREE": 6,
+            "SKIPLIST": 7 
         }
         self.statistic_features_map = {
             "Duration (dur)": 0, "Rate": 1, "Source Load (sload)": 2,
@@ -37,14 +39,11 @@ class ZeroMQGUIClient(ttk.Window):
             "Destination Packets (dpkts)": 5, "Source Bytes (sbytes)": 6,
             "Destination Bytes (dbytes)": 7,
         }
-        # NEW: Map for sorting options, values match C++ sort logic
         self.sort_features_map = {
             "ID": "id", "Duration": "dur", "Rate": "rate",
             "Source Bytes": "sbytes", "Dest Bytes": "dbytes"
         }
-        # NEW: Map for protocol filter, values match C++ enum values
         self.protocol_filter_map = {"Any": "any", "TCP": 0, "UDP": 1, "ICMP": 4}
-
 
         self._create_widgets()
         self.process_cpp_response_queue()
@@ -67,7 +66,6 @@ class ZeroMQGUIClient(ttk.Window):
         top_level_operation_frame.pack(fill=X, pady=(0, 10))
 
         self.selected_top_level_operation = tk.StringVar(value="GET_DATA")
-        # Added "Filter & Sort Data" back to the list of operations
         operations = [
             ("Query Last 3 Data", "GET_DATA"), ("Query Data by ID", "QUERY_DATA_BY_ID"),
             ("Remove Data by ID", "REMOVE_DATA_BY_ID"), ("Perform Statistics", "PERFORM_STATS"),
@@ -83,20 +81,35 @@ class ZeroMQGUIClient(ttk.Window):
         for i in range(3): top_level_operation_frame.grid_columnconfigure(i, weight=1)
 
         # --- Frames for different operations ---
+        
+        # Frame for Data Structure selection (General Purpose)
         self.data_structure_selection_frame = ttk.Labelframe(left_frame, text="Select Data Structure", padding="10")
         self.selected_data_structure = tk.StringVar(value="AVL")
+        # Updated: Added ("SkipList", "SKIPLIST") to the list of general DS options
         all_ds_options = [
             ("AVL Tree", "AVL"), ("Linked List", "LINKED_LIST"), ("Hashset", "HASHSET"),
-            ("Cuckoo Hash", "CUCKOO_HASH"), ("Segment Tree", "SEGMENT_TREE"), ("Red-Black Tree", "RED_BLACK_TREE")
+            ("Cuckoo Hash", "CUCKOO_HASH"), ("Segment Tree", "SEGMENT_TREE"), ("Red-Black Tree", "RED_BLACK_TREE"),
+            ("SkipList", "SKIPLIST") 
         ]
-        self.ds_radio_buttons = {}
         for i, (text, value) in enumerate(all_ds_options):
             rb = ttk.Radiobutton(
                 self.data_structure_selection_frame, text=text, variable=self.selected_data_structure,
                 value=value, bootstyle="info-round-toggle")
             rb.grid(row=i // 3, column=i % 3, padx=5, pady=2, sticky="w")
-            self.ds_radio_buttons[value] = rb
         for i in range(3): self.data_structure_selection_frame.grid_columnconfigure(i, weight=1)
+
+        # Frame for Data Structure selection (Statistics ONLY)
+        self.stats_ds_selection_frame = ttk.Labelframe(left_frame, text="Select Data Structure (for Stats)", padding="10")
+        self.selected_stats_ds = tk.StringVar(value="LINKED_LIST")
+        # Ensure that only data structures supporting statistics are listed here
+        stats_ds_options = [("Linked List", "LINKED_LIST"), ("Segment Tree", "SEGMENT_TREE")]
+        for i, (text, value) in enumerate(stats_ds_options):
+            rb = ttk.Radiobutton(
+                self.stats_ds_selection_frame, text=text, variable=self.selected_stats_ds,
+                value=value, bootstyle="info-round-toggle"
+            )
+            rb.pack(side=LEFT, padx=5, pady=2)
+
 
         self.input_fields_frame = ttk.Frame(left_frame)
         self.id_label = ttk.Label(self.input_fields_frame, text="Data ID:", bootstyle="secondary")
@@ -120,9 +133,8 @@ class ZeroMQGUIClient(ttk.Window):
         self.interval_entry.insert(0, "100")
         self.interval_entry.grid(row=1, column=1, padx=(0, 10), pady=2, sticky="ew")
 
-        # --- NEW: Frame for Filtering and Sorting ---
+        # --- Frame for Filtering and Sorting ---
         self.filter_sort_frame = ttk.Labelframe(left_frame, text="Filter & Sort Options", padding="10")
-        # Filter options
         ttk.Label(self.filter_sort_frame, text="Filter By:", font="-weight bold").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 5))
         self.filter_label_var = tk.StringVar(value="any")
         ttk.Label(self.filter_sort_frame, text="Label:").grid(row=1, column=0, sticky="w")
@@ -132,7 +144,6 @@ class ZeroMQGUIClient(ttk.Window):
         ttk.Label(self.filter_sort_frame, text="Protocol:").grid(row=2, column=0, sticky="w")
         ttk.Combobox(self.filter_sort_frame, textvariable=self.filter_proto_var, values=list(self.protocol_filter_map.keys()), state="readonly").grid(row=2, column=1, sticky="ew", pady=2)
         
-        # Sort options
         ttk.Label(self.filter_sort_frame, text="Sort By:", font="-weight bold").grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 5))
         self.sort_by_var = tk.StringVar(value="ID")
         ttk.Label(self.filter_sort_frame, text="Field:").grid(row=4, column=0, sticky="w")
@@ -142,14 +153,10 @@ class ZeroMQGUIClient(ttk.Window):
         ttk.Label(self.filter_sort_frame, text="Order:").grid(row=5, column=0, sticky="w")
         ttk.Combobox(self.filter_sort_frame, textvariable=self.sort_order_var, values=["asc", "desc"], state="readonly").grid(row=5, column=1, sticky="ew", pady=2)
         
-        # Limit results
         self.limit_var = tk.StringVar(value="20")
         ttk.Label(self.filter_sort_frame, text="Limit:").grid(row=6, column=0, sticky="w", pady=(10,0))
         ttk.Entry(self.filter_sort_frame, textvariable=self.limit_var).grid(row=6, column=1, sticky="ew", pady=(10,0))
-
-
         self.filter_sort_frame.grid_columnconfigure(1, weight=1)
-
 
         # --- Control and Log frames ---
         control_frame = ttk.Frame(left_frame)
@@ -196,24 +203,24 @@ class ZeroMQGUIClient(ttk.Window):
 
     def _toggle_input_fields(self):
         selected_main_op = self.selected_top_level_operation.get()
-        # --- Start by hiding all optional frames and widgets ---
+        # --- Start by hiding all optional frames ---
         self.input_fields_frame.pack_forget()
         self.stats_options_frame.pack_forget()
         self.data_structure_selection_frame.pack_forget()
-        self.filter_sort_frame.pack_forget() # Hide the filter frame
+        self.stats_ds_selection_frame.pack_forget() # Ensure stats DS frame is also handled
+        self.filter_sort_frame.pack_forget() 
         
-        # --- Selectively show frames and widgets based on the main operation ---
+        # --- Selectively show frames based on the main operation ---
         if selected_main_op in ["QUERY_DATA_BY_ID", "REMOVE_DATA_BY_ID"]:
-            self.input_fields_frame.pack(fill=X, pady=(0, 10))
+            self.input_fields_frame.pack(fill=X, pady=(0, 5))
             self.data_structure_selection_frame.pack(fill=X, pady=(0, 10))
         
         elif selected_main_op == "PERFORM_STATS":
-            self.stats_options_frame.pack(fill=X, pady=(0, 10))
-            self.data_structure_selection_frame.pack(fill=X, pady=(0, 10))
+            self.stats_options_frame.pack(fill=X, pady=(0, 5))
+            self.stats_ds_selection_frame.pack(fill=X, pady=(0, 10)) # Show specific stats DS frame
         
         elif selected_main_op == "QUERY_FILTERED_SORTED":
             self.filter_sort_frame.pack(fill=X, pady=(0,10))
-
 
     def _log_message(self, message, prefix="[LOG]", bootstyle="default"):
         self.log_text.text.configure(state="normal")
@@ -231,11 +238,20 @@ class ZeroMQGUIClient(ttk.Window):
         main_operation = self.selected_top_level_operation.get()
         request_payload = main_operation 
         
-        if main_operation in ["QUERY_DATA_BY_ID", "REMOVE_DATA_BY_ID"]:
+        if main_operation == "QUERY_DATA_BY_ID":
             data_id = self.id_entry.get().strip()
             if not data_id or not data_id.isdigit():
                 messagebox.showwarning("Input Error", "ID must be a valid integer.")
                 return
+            ds_num = self.data_structure_map.get(self.selected_data_structure.get())
+            request_payload += f" {data_id} {ds_num}"
+
+        elif main_operation == "REMOVE_DATA_BY_ID":
+            data_id = self.id_entry.get().strip()
+            if not data_id or not data_id.isdigit():
+                messagebox.showwarning("Input Error", "ID must be a valid integer.")
+                return
+            # Get the DS number to send to the backend
             ds_num = self.data_structure_map.get(self.selected_data_structure.get())
             request_payload += f" {data_id} {ds_num}"
 
@@ -245,29 +261,26 @@ class ZeroMQGUIClient(ttk.Window):
             if not interval.isdigit() or int(interval) <= 0:
                 messagebox.showwarning("Input Error", "Interval must be a positive integer.")
                 return
-            ds_num = self.data_structure_map.get(self.selected_data_structure.get())
+            # Use selected_stats_ds for statistics (this is already correctly implemented)
+            ds_num = self.data_structure_map.get(self.selected_stats_ds.get()) 
             request_payload += f" {feature_enum} {interval} {ds_num}"
         
         elif main_operation == "QUERY_FILTERED_SORTED":
             params = []
-            # Label filter
             label_filter = self.filter_label_var.get()
             if label_filter == "attack": params.append("label=true")
             elif label_filter == "normal": params.append("label=false")
             
-            # Protocol filter
             proto_filter_key = self.filter_proto_var.get()
             proto_filter_val = self.protocol_filter_map.get(proto_filter_key)
             if proto_filter_val != "any": params.append(f"proto={proto_filter_val}")
             
-            # Sorting
             sort_by_key = self.sort_by_var.get()
             sort_by_val = self.sort_features_map.get(sort_by_key)
             sort_order = self.sort_order_var.get()
             params.append(f"sort_by={sort_by_val}")
             params.append(f"sort_order={sort_order}")
             
-            # Limit
             limit_val = self.limit_var.get()
             if limit_val.isdigit() and int(limit_val) > 0:
                 params.append(f"limit={limit_val}")
@@ -391,4 +404,5 @@ class ZeroMQGUIClient(ttk.Window):
 if __name__ == "__main__":
     app = ZeroMQGUIClient()
     app.mainloop()
+
 

@@ -63,6 +63,16 @@ services:
       - "5558:5558"
     networks:
         - app_network
+        # --- NOVO: Adição de limites de CPU para simular CPU mais lenta ---
+    deploy:
+      resources:
+        limits:
+          # Limita o contêiner a usar no máximo 0.5 de um núcleo de CPU.
+          # Isso faz com que ele se comporte como se estivesse em uma CPU mais lenta.
+          cpus: '0.5' 
+          # Ou, para controle mais granular (50ms a cada 100ms):
+          # cpu_period: 100000
+          # cpu_quota: 50000
 
   python-gui-client:
     build:
