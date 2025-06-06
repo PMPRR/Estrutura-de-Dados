@@ -66,12 +66,12 @@ typename RBTree<Key, Value>::Node* RBTree<Key, Value>::search(const Key& key) co
 }
 
 template <typename Key, typename Value>
-std::optional<Value> RBTree<Key, Value>::find(const Key& key) const {
+Optional<Value> RBTree<Key, Value>::find(const Key& key) const {
     Node* node = search(key);
     if (node != nil_) {
-        return node->value;
+        return Optional<Value>(node->value);
     }
-    return std::nullopt;
+    return Optional<Value>();
 }
 
 template <typename Key, typename Value>
