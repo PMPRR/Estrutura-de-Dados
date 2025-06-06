@@ -88,7 +88,7 @@ void CuckooHashTable::rehash() {
     for (const auto& entry : old_table2) {
         insert(entry.data); // This insert will handle potential kicks/cycles in new tables
     }
-    std::cout << "[CuckooHashTable] Rehashing complete. Old capacity: " << old_capacity << ", New capacity: " << capacity << ", max_loop: " << max_loop << std::endl;
+    //std::cout << "[CuckooHashTable] Rehashing complete. Old capacity: " << old_capacity << ", New capacity: " << capacity << ", max_loop: " << max_loop << std::endl;
 }
 
 bool CuckooHashTable::insert(const Data* data) {

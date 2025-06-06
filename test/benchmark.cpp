@@ -7,6 +7,7 @@
 #include <iostream>
 #include <iomanip>
 #include <unordered_map>
+#include <cmath> // Required for std::log2
 
 // Include all the data structures to be benchmarked
 #include "essential/AVL.h"
@@ -34,12 +35,13 @@ void GenerateGlobalData(size_t n) {
     rng.seed(std::random_device{}());
     std::set<uint32_t> unique_ids;
 
-    while (unique_ids.size() < n) {
+    // To ensure we have enough unique data for all tests
+    size_t required_size = n + 100;
+    while (unique_ids.size() < required_size) {
         unique_ids.insert(dist(rng));
     }
 
-    test_data_pool.reserve(n);
-    existing_keys.reserve(n);
+    test_data_pool.reserve(required_size);
     
     for (uint32_t id : unique_ids) {
         test_data_pool.push_back(std::make_unique<Data>(id, 1.0f, 10.0f, 100.0f, 0.0f, 0.1f, 0.1f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1, 1, 10, 10, 64, 64, 0, 0, 1, 1, 1, 1, 1, 1, 1, 100, 1, 1, 1, 1, 1, 0, 0, 1, 1, false, false, false, Protocolo::TCP, State::FIN, Attack_cat::NORMAL, Servico::HTTP));
@@ -59,7 +61,7 @@ public:
     }
 };
 
-// --- Fixtures ---
+// --- Tree Fixtures ---
 class AVLFixture : public BaseFixture {
 public:
     std::unique_ptr<AVL> structure;
@@ -67,12 +69,10 @@ public:
         BaseFixture::SetUp(state);
         structure = std::make_unique<AVL>();
         for (int i = 0; i < state.range(0); ++i) {
-            structure->insert(test_data_pool[i].get());
+            structure->insert(data_map.at(existing_keys[i]));
         }
     }
-    void TearDown(const benchmark::State& state) override {
-        structure.reset();
-    }
+    void TearDown(const benchmark::State& state) override { structure.reset(); }
 };
 
 class RBTreeFixture : public BaseFixture {
@@ -82,12 +82,10 @@ public:
         BaseFixture::SetUp(state);
         structure = std::make_unique<RBTree>();
         for (int i = 0; i < state.range(0); ++i) {
-            structure->insert(test_data_pool[i].get());
+             structure->insert(data_map.at(existing_keys[i]));
         }
     }
-    void TearDown(const benchmark::State& state) override {
-        structure.reset();
-    }
+    void TearDown(const benchmark::State& state) override { structure.reset(); }
 };
 
 class SkipListFixture : public BaseFixture {
@@ -97,279 +95,322 @@ public:
         BaseFixture::SetUp(state);
         structure = std::make_unique<SkipList>();
         for (int i = 0; i < state.range(0); ++i) {
-            structure->insert(test_data_pool[i].get());
+            structure->insert(data_map.at(existing_keys[i]));
         }
     }
-    void TearDown(const benchmark::State& state) override {
-        structure.reset();
-    }
+    void TearDown(const benchmark::State& state) override { structure.reset(); }
 };
 
-// --- PERFORMANCE BENCHMARK DEFINITIONS ---
+// --- Hash Table Fixtures ---
+class HashTableFixture : public BaseFixture {
+public:
+    std::unique_ptr<HashTable> structure;
+    void SetUp(const benchmark::State& state) override {
+        BaseFixture::SetUp(state);
+        structure = std::make_unique<HashTable>(state.range(0));
+        for (int i = 0; i < state.range(0); ++i) {
+            structure->insert(data_map.at(existing_keys[i]));
+        }
+    }
+    void TearDown(const benchmark::State& state) override { structure.reset(); }
+};
 
-// --- AVL Benchmarks ---
+class CuckooHashTableFixture : public BaseFixture {
+public:
+    std::unique_ptr<CuckooHashTable> structure;
+    void SetUp(const benchmark::State& state) override {
+        BaseFixture::SetUp(state);
+        structure = std::make_unique<CuckooHashTable>(state.range(0) * 2); // Cuckoo needs more space
+        for (int i = 0; i < state.range(0); ++i) {
+            structure->insert(data_map.at(existing_keys[i]));
+        }
+    }
+    void TearDown(const benchmark::State& state) override { structure.reset(); }
+};
+
+// --- LinkedList Fixture ---
+class LinkedListFixture : public BaseFixture {
+public:
+    std::unique_ptr<DoublyLinkedList> structure;
+    void SetUp(const benchmark::State& state) override {
+        BaseFixture::SetUp(state);
+        structure = std::make_unique<DoublyLinkedList>();
+        for (int i = 0; i < state.range(0); ++i) {
+            structure->append(data_map.at(existing_keys[i]));
+        }
+    }
+    void TearDown(const benchmark::State& state) override { structure.reset(); }
+};
+
+
+// --- PERFORMANCE BENCHMARK DEFINITIONS ---
+// AVL
 BENCHMARK_DEFINE_F(AVLFixture, Find)(benchmark::State& state) {
     for (auto _ : state) {
-        benchmark::DoNotOptimize(structure->queryById(existing_keys[0]));
+        benchmark::DoNotOptimize(structure->queryById(existing_keys[state.iterations() % state.range(0)]));
     }
     state.SetComplexityN(state.range(0));
 }
-
 BENCHMARK_DEFINE_F(AVLFixture, Insert)(benchmark::State& state) {
     long i = 0;
     for (auto _ : state) {
         state.PauseTiming();
         uint32_t key = existing_keys[i % state.range(0)];
+        const Data* data_to_add = data_map.at(key);
         structure->removeById(key);
-        const Data* data_to_readd = data_map[key];
         state.ResumeTiming();
-        
-        structure->insert(data_to_readd);
+        structure->insert(data_to_add);
         i++;
     }
     state.SetComplexityN(state.range(0));
 }
-
 BENCHMARK_DEFINE_F(AVLFixture, Remove)(benchmark::State& state) {
     long i = 0;
     for (auto _ : state) {
         state.PauseTiming();
         uint32_t key = existing_keys[i % state.range(0)];
-        const Data* data_to_readd = data_map[key];
+        const Data* data_to_readd = data_map.at(key);
         state.ResumeTiming();
-
         structure->removeById(key);
-
         state.PauseTiming();
-        structure->insert(data_to_readd); // Re-insert to maintain size
-        state.ResumeTiming();
-        i++;
-    }
-    state.SetComplexityN(state.range(0));
-}
-
-BENCHMARK_DEFINE_F(AVLFixture, MixedLatency)(benchmark::State& state) {
-    long i = 0;
-    for (auto _ : state) {
-        state.PauseTiming();
-        uint32_t key_to_find = existing_keys[i % state.range(0)];
-        uint32_t key_to_remove_add = existing_keys[(i + 1) % state.range(0)];
-        const Data* data_to_readd = data_map[key_to_remove_add];
-        state.ResumeTiming();
-
-        benchmark::DoNotOptimize(structure->queryById(key_to_find));
-        structure->removeById(key_to_remove_add);
         structure->insert(data_to_readd);
-        
+        state.ResumeTiming();
         i++;
     }
     state.SetComplexityN(state.range(0));
 }
 
-// --- RBTree Benchmarks ---
+// RBTree
 BENCHMARK_DEFINE_F(RBTreeFixture, Find)(benchmark::State& state) {
     for (auto _ : state) {
-        benchmark::DoNotOptimize(structure->find(existing_keys[0]));
+        benchmark::DoNotOptimize(structure->find(existing_keys[state.iterations() % state.range(0)]));
     }
     state.SetComplexityN(state.range(0));
 }
-
 BENCHMARK_DEFINE_F(RBTreeFixture, Insert)(benchmark::State& state) {
     long i = 0;
     for (auto _ : state) {
         state.PauseTiming();
         uint32_t key = existing_keys[i % state.range(0)];
+        const Data* data_to_add = data_map.at(key);
         structure->remove(key);
-        const Data* data_to_readd = data_map[key];
         state.ResumeTiming();
-        
-        structure->insert(data_to_readd);
+        structure->insert(data_to_add);
         i++;
     }
     state.SetComplexityN(state.range(0));
 }
-
 BENCHMARK_DEFINE_F(RBTreeFixture, Remove)(benchmark::State& state) {
     long i = 0;
     for (auto _ : state) {
         state.PauseTiming();
         uint32_t key = existing_keys[i % state.range(0)];
-        const Data* data_to_readd = data_map[key];
+        const Data* data_to_readd = data_map.at(key);
         state.ResumeTiming();
-
         structure->remove(key);
-
         state.PauseTiming();
-        structure->insert(data_to_readd); // Re-insert to maintain size
-        state.ResumeTiming();
-        i++;
-    }
-    state.SetComplexityN(state.range(0));
-}
-
-BENCHMARK_DEFINE_F(RBTreeFixture, MixedLatency)(benchmark::State& state) {
-    long i = 0;
-    for (auto _ : state) {
-        state.PauseTiming();
-        uint32_t key_to_find = existing_keys[i % state.range(0)];
-        uint32_t key_to_remove_add = existing_keys[(i + 1) % state.range(0)];
-        const Data* data_to_readd = data_map[key_to_remove_add];
-        state.ResumeTiming();
-
-        benchmark::DoNotOptimize(structure->find(key_to_find));
-        structure->remove(key_to_remove_add);
         structure->insert(data_to_readd);
-        
+        state.ResumeTiming();
         i++;
     }
     state.SetComplexityN(state.range(0));
 }
 
-// --- SkipList Benchmarks ---
+// SkipList
 BENCHMARK_DEFINE_F(SkipListFixture, Find)(benchmark::State& state) {
     for (auto _ : state) {
-        benchmark::DoNotOptimize(structure->find(existing_keys[0]));
+        benchmark::DoNotOptimize(structure->find(existing_keys[state.iterations() % state.range(0)]));
     }
     state.SetComplexityN(state.range(0));
 }
-
 BENCHMARK_DEFINE_F(SkipListFixture, Insert)(benchmark::State& state) {
     long i = 0;
     for (auto _ : state) {
         state.PauseTiming();
         uint32_t key = existing_keys[i % state.range(0)];
+        const Data* data_to_add = data_map.at(key);
         structure->remove(key);
-        const Data* data_to_readd = data_map[key];
         state.ResumeTiming();
-        
-        structure->insert(data_to_readd);
+        structure->insert(data_to_add);
         i++;
     }
     state.SetComplexityN(state.range(0));
 }
-
 BENCHMARK_DEFINE_F(SkipListFixture, Remove)(benchmark::State& state) {
     long i = 0;
     for (auto _ : state) {
         state.PauseTiming();
         uint32_t key = existing_keys[i % state.range(0)];
-        const Data* data_to_readd = data_map[key];
+        const Data* data_to_readd = data_map.at(key);
         state.ResumeTiming();
-
         structure->remove(key);
-
         state.PauseTiming();
-        structure->insert(data_to_readd); // Re-insert to maintain size
+        structure->insert(data_to_readd);
         state.ResumeTiming();
         i++;
     }
     state.SetComplexityN(state.range(0));
 }
 
-BENCHMARK_DEFINE_F(SkipListFixture, MixedLatency)(benchmark::State& state) {
+// HashTable
+BENCHMARK_DEFINE_F(HashTableFixture, Find)(benchmark::State& state) {
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(structure->find(existing_keys[state.iterations() % state.range(0)]));
+    }
+    state.SetComplexityN(state.range(0));
+}
+BENCHMARK_DEFINE_F(HashTableFixture, Insert)(benchmark::State& state) {
     long i = 0;
     for (auto _ : state) {
         state.PauseTiming();
         uint32_t key_to_find = existing_keys[i % state.range(0)];
-        uint32_t key_to_remove_add = existing_keys[(i + 1) % state.range(0)];
-        const Data* data_to_readd = data_map[key_to_remove_add];
+        const Data* data_to_add = data_map.at(key_to_find);
         state.ResumeTiming();
-
-        benchmark::DoNotOptimize(structure->find(key_to_find));
-        structure->remove(key_to_remove_add);
-        structure->insert(data_to_readd);
-        
+        structure->insert(data_to_add);
         i++;
     }
     state.SetComplexityN(state.range(0));
 }
 
 
-// --- NEW: MEMORY USAGE BENCHMARKS ---
+// CuckooHashTable
+BENCHMARK_DEFINE_F(CuckooHashTableFixture, Find)(benchmark::State& state) {
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(structure->search(existing_keys[state.iterations() % state.range(0)]));
+    }
+    state.SetComplexityN(state.range(0));
+}
+BENCHMARK_DEFINE_F(CuckooHashTableFixture, Insert)(benchmark::State& state) {
+    long i = 0;
+    for (auto _ : state) {
+        state.PauseTiming();
+        uint32_t key_to_find = existing_keys[i % state.range(0)];
+        const Data* data_to_add = data_map.at(key_to_find);
+        structure->remove(key_to_find);
+        state.ResumeTiming();
+        structure->insert(data_to_add);
+        i++;
+    }
+    state.SetComplexityN(state.range(0));
+}
 
+
+// LinkedList
+BENCHMARK_DEFINE_F(LinkedListFixture, Find)(benchmark::State& state) {
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(structure->findById(existing_keys[state.iterations() % state.range(0)]));
+    }
+    state.SetComplexityN(state.range(0));
+}
+BENCHMARK_DEFINE_F(LinkedListFixture, Append)(benchmark::State& state) {
+    long i = 0;
+    for (auto _ : state) {
+        state.PauseTiming();
+        const Data* data_to_add = test_data_pool[state.range(0) + (i % 100)].get();
+        state.ResumeTiming();
+        structure->append(data_to_add);
+        state.PauseTiming();
+        structure->removeById(data_to_add->id);
+        state.ResumeTiming();
+        i++;
+    }
+    state.SetComplexityN(state.range(0));
+}
+BENCHMARK_DEFINE_F(LinkedListFixture, Remove)(benchmark::State& state) {
+    long i = 0;
+    for (auto _ : state) {
+        state.PauseTiming();
+        uint32_t key = existing_keys[i % state.range(0)];
+        const Data* data_to_readd = data_map.at(key);
+        state.ResumeTiming();
+        structure->removeById(key);
+        state.PauseTiming();
+        structure->append(data_to_readd);
+        state.ResumeTiming();
+        i++;
+    }
+    state.SetComplexityN(state.range(0));
+}
+
+// --- DIAGNOSTIC BENCHMARKS ---
+// Memory Usage
 BENCHMARK_DEFINE_F(AVLFixture, MemoryUsage)(benchmark::State& state) {
-    // Estimativa do tamanho de um nó da árvore AVL:
-    // 1 ponteiro para os dados + 2 ponteiros para os filhos + 1 inteiro para a altura.
+    for(auto _ : state) { benchmark::DoNotOptimize(structure.get()); }
     size_t node_size = sizeof(Data*) + 2 * sizeof(void*) + sizeof(int);
-    size_t total_memory = state.range(0) * node_size;
-    state.counters["Memory_Bytes"] = benchmark::Counter(total_memory, benchmark::Counter::kDefaults, benchmark::Counter::OneK::kIs1024);
-    
-    for (auto _ : state) {
-        benchmark::DoNotOptimize(structure.get());
-    }
+    state.counters["Memory_Bytes"] = state.range(0) * node_size;
 }
-
 BENCHMARK_DEFINE_F(RBTreeFixture, MemoryUsage)(benchmark::State& state) {
-    // Estimativa do tamanho de um nó da árvore Red-Black:
-    // 1 ponteiro para os dados + 2 ponteiros para os filhos + 1 ponteiro para o pai + 1 inteiro para a cor.
+    for(auto _ : state) { benchmark::DoNotOptimize(structure.get()); }
     size_t node_size = sizeof(Data*) + 3 * sizeof(void*) + sizeof(int);
-    size_t total_memory = state.range(0) * node_size;
-    state.counters["Memory_Bytes"] = benchmark::Counter(total_memory, benchmark::Counter::kDefaults, benchmark::Counter::OneK::kIs1024);
-
-    for (auto _ : state) {
-        benchmark::DoNotOptimize(structure.get());
-    }
+    state.counters["Memory_Bytes"] = state.range(0) * node_size;
 }
-
 BENCHMARK_DEFINE_F(SkipListFixture, MemoryUsage)(benchmark::State& state) {
-    // Estimativa do tamanho de um nó da Skip List é mais complexa devido ao array de ponteiros.
-    // Usaremos uma estimativa simplificada: 1 ponteiro para os dados + uma média de 4 ponteiros "forward".
-    size_t node_size = sizeof(Data*) + 4 * sizeof(void*);
-    size_t total_memory = state.range(0) * node_size;
-    state.counters["Memory_Bytes"] = benchmark::Counter(total_memory, benchmark::Counter::kDefaults, benchmark::Counter::OneK::kIs1024);
-
-    for (auto _ : state) {
-        benchmark::DoNotOptimize(structure.get());
-    }
+    for(auto _ : state) { benchmark::DoNotOptimize(structure.get()); }
+    size_t node_size = sizeof(Data*) + 4 * sizeof(void*); // Simplified estimate
+    state.counters["Memory_Bytes"] = state.range(0) * node_size;
+}
+BENCHMARK_DEFINE_F(HashTableFixture, MemoryUsage)(benchmark::State& state) {
+    for(auto _ : state) { benchmark::DoNotOptimize(structure.get()); }
+    size_t entry_size = sizeof(Data*) + sizeof(uint32_t);
+    state.counters["Memory_Bytes"] = state.range(0) * entry_size;
+}
+BENCHMARK_DEFINE_F(CuckooHashTableFixture, MemoryUsage)(benchmark::State& state) {
+    for(auto _ : state) { benchmark::DoNotOptimize(structure.get()); }
+    size_t entry_size = sizeof(Data*);
+    state.counters["Memory_Bytes"] = state.range(0) * entry_size * 2; // Account for the larger table size
+}
+BENCHMARK_DEFINE_F(LinkedListFixture, MemoryUsage)(benchmark::State& state) {
+    for(auto _ : state) { benchmark::DoNotOptimize(structure.get()); }
+    size_t node_size = sizeof(Data*) + 2 * sizeof(void*);
+    state.counters["Memory_Bytes"] = state.range(0) * node_size;
 }
 
-
-// --- Análise dos Resultados ---
-//
-// 1. Complexidade Assintótica Real vs. Teórica:
-//    Dentro de cada teste de DESEMPENHO (Find, Insert, etc.), a linha:
-//    `state.SetComplexityN(state.range(0));`
-//    informa à biblioteca o 'N' (tamanho da entrada). Ao rodar os testes, a
-//    biblioteca medirá o tempo para diferentes 'N's e calculará a complexidade
-//    Big-O observada.
-//
-//    COMO LER: Na saída, procure as colunas "Time" e "Big-O". Para as árvores
-//    e Skip List, a complexidade teórica é O(logN). O benchmark mostrará quão
-//    próximo o resultado prático está disso. Um valor baixo na coluna "RMS"
-//    (erro) indica um bom ajuste entre a teoria e a prática.
-//
-// 2. Uso de Memória:
-//    Os novos testes `MemoryUsage` não medem tempo, mas sim reportam o uso de
-//    memória estimado. Eles fazem isso usando `state.counters`.
-//
-//    COMO LER: Na saída, procure pelas linhas `.../MemoryUsage`. Elas terão uma
-//    coluna extra chamada "Memory_Bytes", mostrando o total de bytes estimados
-//    para a estrutura com 'N' elementos. Isso permite comparar o custo de
-//    memória entre as diferentes estruturas de dados.
-
+// Collision Info
+BENCHMARK_DEFINE_F(HashTableFixture, CollisionInfo)(benchmark::State& state) {
+    for (auto _ : state) { benchmark::DoNotOptimize(structure.get()); }
+    CollisionInfo info = structure->getCollisionInfo();
+    state.counters["CollidingBuckets"] = info.colliding_buckets;
+    state.counters["CollisionRate(%)"] = info.collision_rate_percent;
+}
 
 // --- Registering Benchmarks ---
 const int min_range = 1 << 10;
 const int max_range = 1 << 16; 
 
-#define REGISTER_PERFORMANCE_BENCHMARKS(Fixture) \
-    BENCHMARK_REGISTER_F(Fixture, Find)->RangeMultiplier(4)->Range(min_range, max_range); \
-    BENCHMARK_REGISTER_F(Fixture, Insert)->RangeMultiplier(4)->Range(min_range, max_range); \
-    BENCHMARK_REGISTER_F(Fixture, Remove)->RangeMultiplier(4)->Range(min_range, max_range); \
-    BENCHMARK_REGISTER_F(Fixture, MixedLatency)->RangeMultiplier(4)->Range(min_range, max_range);
+// AVL
+BENCHMARK_REGISTER_F(AVLFixture, Find)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::oLogN);
+BENCHMARK_REGISTER_F(AVLFixture, Insert)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::oLogN);
+BENCHMARK_REGISTER_F(AVLFixture, Remove)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::oLogN);
+BENCHMARK_REGISTER_F(AVLFixture, MemoryUsage)->RangeMultiplier(2)->Range(min_range, max_range);
 
-#define REGISTER_MEMORY_BENCHMARK(Fixture) \
-    BENCHMARK_REGISTER_F(Fixture, MemoryUsage)->RangeMultiplier(4)->Range(min_range, max_range);
+// RBTree
+BENCHMARK_REGISTER_F(RBTreeFixture, Find)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::oLogN);
+BENCHMARK_REGISTER_F(RBTreeFixture, Insert)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::oLogN);
+BENCHMARK_REGISTER_F(RBTreeFixture, Remove)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::oLogN);
+BENCHMARK_REGISTER_F(RBTreeFixture, MemoryUsage)->RangeMultiplier(2)->Range(min_range, max_range);
 
-// Registrando todos os benchmarks
-REGISTER_PERFORMANCE_BENCHMARKS(AVLFixture);
-REGISTER_MEMORY_BENCHMARK(AVLFixture);
+// SkipList
+BENCHMARK_REGISTER_F(SkipListFixture, Find)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::oLogN);
+BENCHMARK_REGISTER_F(SkipListFixture, Insert)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::oLogN);
+BENCHMARK_REGISTER_F(SkipListFixture, Remove)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::oLogN);
+BENCHMARK_REGISTER_F(SkipListFixture, MemoryUsage)->RangeMultiplier(2)->Range(min_range, max_range);
 
-REGISTER_PERFORMANCE_BENCHMARKS(RBTreeFixture);
-REGISTER_MEMORY_BENCHMARK(RBTreeFixture);
+// HashTables
+BENCHMARK_REGISTER_F(HashTableFixture, Find)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::o1);
+BENCHMARK_REGISTER_F(HashTableFixture, Insert)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::o1);
+BENCHMARK_REGISTER_F(HashTableFixture, MemoryUsage)->RangeMultiplier(2)->Range(min_range, max_range);
+BENCHMARK_REGISTER_F(HashTableFixture, CollisionInfo)->RangeMultiplier(2)->Range(min_range, max_range);
 
-REGISTER_PERFORMANCE_BENCHMARKS(SkipListFixture);
-REGISTER_MEMORY_BENCHMARK(SkipListFixture);
+BENCHMARK_REGISTER_F(CuckooHashTableFixture, Find)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::o1);
+BENCHMARK_REGISTER_F(CuckooHashTableFixture, Insert)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::o1);
+BENCHMARK_REGISTER_F(CuckooHashTableFixture, MemoryUsage)->RangeMultiplier(2)->Range(min_range, max_range);
+// Note: The CollisionInfo test for Cuckoo has been removed as it does not apply directly.
+
+// LinkedList
+BENCHMARK_REGISTER_F(LinkedListFixture, Find)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::oN);
+BENCHMARK_REGISTER_F(LinkedListFixture, Append)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::o1);
+BENCHMARK_REGISTER_F(LinkedListFixture, Remove)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::oN);
+BENCHMARK_REGISTER_F(LinkedListFixture, MemoryUsage)->RangeMultiplier(2)->Range(min_range, max_range);
 
 BENCHMARK_MAIN();
 
