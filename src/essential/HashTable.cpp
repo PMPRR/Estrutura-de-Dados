@@ -1,39 +1,44 @@
 #include "essential/HashTable.h"
-
-namespace essential {
+#include <iostream> // For debug/error output
 
 HashTable::HashTable(size_t capacidade)
     : table(capacidade), itemCount(0) {}
 
 HashTable::~HashTable() {
-    clear();
+    clear(); // Clear nodes, but Data* ownership is external
 }
 
-size_t HashTable::hash(const std::string &key) const {
-    // Hash DJB2 simples
-    size_t hash = 5381;
-    for (char c : key) {
-        hash = ((hash << 5) + hash) + static_cast<size_t>(c); // hash * 33 + c
+// Simple hash function for uint32_t
+size_t HashTable::hash(uint32_t key) const {
+    // A simple multiplicative hash or XOR folding could be better for integers.
+    // For now, a basic modulo operation.
+    // Ensure the hash disperses values well across table.size().
+    return key % table.size();
+}
+
+void HashTable::insert(const Data* data) {
+    if (!data) {
+        std::cerr << "Error: Attempted to insert a nullptr Data into HashTable." << std::endl;
+        return;
     }
-    return hash % table.size();
-}
 
-void HashTable::insert(const std::string &key, const std::string &value) {
-    size_t idx = hash(key);
+    size_t idx = hash(data->id);
+    // Check if key (data->id) already exists and update value (data pointer)
     for (auto &node : table[idx]) {
-        if (node.key == key) {
-            node.value = value; // Atualiza valor se a chave já existir
+        if (node.data && node.data->id == data->id) {
+            node.data = data; // Update the pointer to the new Data object
             return;
         }
     }
-    table[idx].emplace_back(key, value);
+    // If key does not exist, add new node
+    table[idx].emplace_back(data);
     ++itemCount;
 }
 
-bool HashTable::remove(const std::string &key) {
-    size_t idx = hash(key);
+bool HashTable::remove(uint32_t id) {
+    size_t idx = hash(id);
     for (auto it = table[idx].begin(); it != table[idx].end(); ++it) {
-        if (it->key == key) {
+        if (it->data && it->data->id == id) { // Check for null data pointer too
             table[idx].erase(it);
             --itemCount;
             return true;
@@ -42,18 +47,19 @@ bool HashTable::remove(const std::string &key) {
     return false;
 }
 
-const std::string* HashTable::find(const std::string &key) const {
-    size_t idx = hash(key);
+const Data* HashTable::find(uint32_t id) const {
+    size_t idx = hash(id);
     for (const auto &node : table[idx]) {
-        if (node.key == key)
-            return &node.value;
+        if (node.data && node.data->id == id) { // Check for null data pointer too
+            return node.data;
+        }
     }
     return nullptr;
 }
 
 void HashTable::clear() {
     for (auto &bucket : table) {
-        bucket.clear();
+        bucket.clear(); // Clears all Node objects in the bucket
     }
     itemCount = 0;
 }
@@ -62,4 +68,3 @@ size_t HashTable::size() const {
     return itemCount;
 }
 
-} // namespace essential

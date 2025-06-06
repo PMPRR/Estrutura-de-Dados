@@ -20,6 +20,7 @@
 #include "data.h"                  // The Data struct definition
 #include "essential/AVL.h"         // Include for AVL tree
 #include "essential/LinkedList.h"  // Include for DoublyLinkedList
+#include "essential/HashTable.h"   // Include for HashTable
 
 // Global atomic boolean to signal termination for all loops
 std::atomic<bool> keep_running(true);
@@ -151,8 +152,11 @@ int main() {
     // --- Instantiate Data Structures ---
     AVL avl_tree;
     DoublyLinkedList doubly_linked_list; // Instantiate DoublyLinkedList
+    HashTable hash_table;                // Instantiate HashTable
+    
     const int AVL_DS_ID = 1;             // Corresponds to "AVL" in gui.py's data_structure_map
     const int LINKED_LIST_DS_ID = 2;     // Corresponds to "LINKED_LIST" in gui.py's data_structure_map
+    const int HASHTABLE_DS_ID = 3;       // Corresponds to "HASHSET" in gui.py's data_structure_map
 
 
     // --- Setup DataReceiver (Subscriber to python_publisher) ---
@@ -199,9 +203,9 @@ int main() {
         const Data* received_data_ptr = received_data_view.first;
         size_t current_received_count = received_data_view.second;
 
-        // Update master_data_store AND AVL tree & LinkedList (only if there's new data)
+        // Update master_data_store AND all data structures (only if there's new data)
         if (current_received_count > last_processed_data_collector_count) {
-            std::cout << "[Main] New data received from DataReceiver. Adding to master data store, AVL tree, and Linked List." << std::endl;
+            std::cout << "[Main] New data received from DataReceiver. Adding to master data store and data structures." << std::endl;
             for (size_t i = last_processed_data_collector_count; i < current_received_count; ++i) {
                 // Deep copy the Data object from DataReceiver's internal array
                 // and store it in a unique_ptr within master_data_store.
@@ -213,11 +217,13 @@ int main() {
                 avl_tree.insert(data_to_insert); 
                 // Insert into DoublyLinkedList
                 doubly_linked_list.append(data_to_insert);
+                // Insert into HashTable
+                hash_table.insert(data_to_insert);
 
             }
             last_processed_data_collector_count = current_received_count;
             std::cout << "[Main] Master data store size: " << master_data_store.size() << " items." << std::endl;
-            std::cout << "[Main] AVL tree and Linked List updated with new data." << std::endl;
+            std::cout << "[Main] AVL tree, Linked List, and Hash Table updated with new data." << std::endl;
         }
 
         // --- Handle GUI requests (REP socket) ---
@@ -307,9 +313,16 @@ int main() {
                         } else {
                             reply_str = "No data with ID " + std::to_string(id_to_query) + " found in Linked List.";
                         }
+                    } else if (ds_id == HASHTABLE_DS_ID) { // Check if the requested DS is Hash Table
+                        const Data* found_data = hash_table.find(id_to_query);
+                        if (found_data != nullptr) {
+                            reply_str = format_data_as_table(*found_data);
+                        } else {
+                            reply_str = "No data with ID " + std::to_string(id_to_query) + " found in Hash Table.";
+                        }
                     }
                     else {
-                        reply_str = "Query by ID for Data Structure ID " + std::to_string(ds_id) + " (other than AVL/LinkedList) NOT IMPLEMENTED yet.";
+                        reply_str = "Query by ID for Data Structure ID " + std::to_string(ds_id) + " NOT IMPLEMENTED yet.";
                     }
                 }
             } else if (request_str.rfind("REMOVE_DATA_BY_ID ", 0) == 0) {
@@ -352,8 +365,14 @@ int main() {
                             doubly_linked_list.removeById(id_to_remove);
                             removed_from_ds = true;
                         }
-                    } else {
-                        reply_str = "Remove by ID for Data Structure ID " + std::to_string(ds_id) + " (other than AVL/LinkedList) NOT IMPLEMENTED yet.";
+                    } else if (ds_id == HASHTABLE_DS_ID) { // Remove from Hash Table
+                         if (hash_table.find(id_to_remove) != nullptr) {
+                            hash_table.remove(id_to_remove);
+                            removed_from_ds = true;
+                        }
+                    }
+                    else {
+                        reply_str = "Remove by ID for Data Structure ID " + std::to_string(ds_id) + " NOT IMPLEMENTED yet.";
                     }
 
                     if (removed_from_ds) {

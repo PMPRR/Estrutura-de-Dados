@@ -143,8 +143,6 @@ std::vector<float> DoublyLinkedList::collectIntervalValues(StatisticFeature feat
     // The values are collected in reverse order (most recent first).
     // For statistics like average, min/max, it doesn't matter.
     // For median, sorting will handle it.
-    std::reverse(values.begin(), values.end()); // Reverse to chronological order if needed, but not strictly for stats
-
     return values;
 }
 
