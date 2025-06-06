@@ -61,7 +61,7 @@ cmake .. && make
 - [x] implementar Cuckoo Hash e Segment Tree (1.0)
 - [x] implementar Red-Black tree (0.3)
 - [x] fazer interface gráfica (0.6)
-- [ ] benchmark (1)
+- [x] benchmark (1)
 - [x] predição por IA apartir do dataset (2)
 - [x] fazer a simulação (0.3)
 - [x] fazer calculos estatisticos (0.3)
