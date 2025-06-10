@@ -1,3 +1,6 @@
+// Criado pelo Gemini 2.5: 
+// PROMPT:  Change the benchmark so it can analize segment tree, make sure to include the memory
+
 #include "extra/SegmentTree.h" // Include the corresponding header file
 #include <iostream>            // For debug output (if any)
 #include <algorithm>           // For std::find_if, std::min, std::max, std::sort, std::reverse
@@ -202,6 +205,36 @@ float SegmentTree::getTotalRate() const {
     return getSum(root.get());
 }
 
+// NEW: Recursive helper function for calculating memory usage
+size_t SegmentTree::getMemoryUsageRecursive(const Node* node) const {
+    if (!node) {
+        return 0;
+    }
+
+    // Memory of the current node object itself
+    size_t current_node_size = sizeof(Node);
+
+    // Memory consumed by the vector of pointers in the leaf node
+    if (!node->values.empty()) {
+        current_node_size += node->values.capacity() * sizeof(const Data*);
+    }
+
+    // Recursively add memory from children
+    size_t left_child_size = getMemoryUsageRecursive(node->leftChild.get());
+    size_t right_child_size = getMemoryUsageRecursive(node->rightChild.get());
+
+    return current_node_size + left_child_size + right_child_size;
+}
+
+// NEW: Public method to get total memory usage of the tree
+size_t SegmentTree::getMemoryUsage() const {
+    if (!root) {
+        return 0;
+    }
+    // Start recursion from the root
+    return getMemoryUsageRecursive(root.get());
+}
+
 
 // Generic statistical methods that take a StatisticFeature enum and interval_count
 float SegmentTree::getAverage(StatisticFeature feature, int interval_count) const {
@@ -240,4 +273,3 @@ float SegmentTree::getMax(StatisticFeature feature, int interval_count) const {
     if (values.empty()) return 0.0f; // Or std::numeric_limits<float>::lowest();
     return *std::max_element(values.begin(), values.end());
 }
-
