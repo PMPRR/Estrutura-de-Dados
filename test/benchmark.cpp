@@ -1,3 +1,6 @@
+// Script criado por IA
+// PROMPT: Change the benchmark so it can analize segment tree, make sure to include the memory
+
 #include <benchmark/benchmark.h>
 #include <vector>
 #include <random>
@@ -16,6 +19,7 @@
 #include "essential/HashTable.h"
 #include "extra/CuckooHashTable.h" 
 #include "essential/LinkedList.h"
+#include "extra/SegmentTree.h" // Include SegmentTree
 #include "data.h"
 
 // --- Global Test Data Pool ---
@@ -137,6 +141,20 @@ public:
         structure = std::make_unique<DoublyLinkedList>();
         for (int i = 0; i < state.range(0); ++i) {
             structure->append(data_map.at(existing_keys[i]));
+        }
+    }
+    void TearDown(const benchmark::State& state) override { structure.reset(); }
+};
+
+// --- SegmentTree Fixture (NEW) ---
+class SegmentTreeFixture : public BaseFixture {
+public:
+    std::unique_ptr<SegmentTree> structure;
+    void SetUp(const benchmark::State& state) override {
+        BaseFixture::SetUp(state);
+        structure = std::make_unique<SegmentTree>();
+        for (int i = 0; i < state.range(0); ++i) {
+            structure->insert(data_map.at(existing_keys[i]));
         }
     }
     void TearDown(const benchmark::State& state) override { structure.reset(); }
@@ -332,38 +350,75 @@ BENCHMARK_DEFINE_F(LinkedListFixture, Remove)(benchmark::State& state) {
     state.SetComplexityN(state.range(0));
 }
 
+// SegmentTree (NEW)
+BENCHMARK_DEFINE_F(SegmentTreeFixture, Find)(benchmark::State& state) {
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(structure->find(existing_keys[state.iterations() % state.range(0)]));
+    }
+    state.SetComplexityN(state.range(0));
+}
+BENCHMARK_DEFINE_F(SegmentTreeFixture, Insert)(benchmark::State& state) {
+    long i = 0;
+    for (auto _ : state) {
+        state.PauseTiming();
+        uint32_t key = existing_keys[i % state.range(0)];
+        const Data* data_to_add = data_map.at(key);
+        structure->remove(key);
+        state.ResumeTiming();
+        structure->insert(data_to_add);
+        i++;
+    }
+    state.SetComplexityN(state.range(0));
+}
+BENCHMARK_DEFINE_F(SegmentTreeFixture, Remove)(benchmark::State& state) {
+    long i = 0;
+    for (auto _ : state) {
+        state.PauseTiming();
+        uint32_t key = existing_keys[i % state.range(0)];
+        const Data* data_to_readd = data_map.at(key);
+        state.ResumeTiming();
+        structure->remove(key);
+        state.PauseTiming();
+        structure->insert(data_to_readd);
+        state.ResumeTiming();
+        i++;
+    }
+    state.SetComplexityN(state.range(0));
+}
+
 // --- DIAGNOSTIC BENCHMARKS ---
 // Memory Usage
 BENCHMARK_DEFINE_F(AVLFixture, MemoryUsage)(benchmark::State& state) {
     for(auto _ : state) { benchmark::DoNotOptimize(structure.get()); }
-    size_t node_size = sizeof(Data*) + 2 * sizeof(void*) + sizeof(int);
-    state.counters["Memory_Bytes"] = state.range(0) * node_size;
+    state.counters["Memory_Bytes"] = structure->getMemoryUsage();
 }
 BENCHMARK_DEFINE_F(RBTreeFixture, MemoryUsage)(benchmark::State& state) {
     for(auto _ : state) { benchmark::DoNotOptimize(structure.get()); }
-    size_t node_size = sizeof(Data*) + 3 * sizeof(void*) + sizeof(int);
-    state.counters["Memory_Bytes"] = state.range(0) * node_size;
+    state.counters["Memory_Bytes"] = structure->getMemoryUsage();
 }
 BENCHMARK_DEFINE_F(SkipListFixture, MemoryUsage)(benchmark::State& state) {
     for(auto _ : state) { benchmark::DoNotOptimize(structure.get()); }
-    size_t node_size = sizeof(Data*) + 4 * sizeof(void*); // Simplified estimate
-    state.counters["Memory_Bytes"] = state.range(0) * node_size;
+    state.counters["Memory_Bytes"] = structure->getMemoryUsage();
 }
 BENCHMARK_DEFINE_F(HashTableFixture, MemoryUsage)(benchmark::State& state) {
     for(auto _ : state) { benchmark::DoNotOptimize(structure.get()); }
-    size_t entry_size = sizeof(Data*) + sizeof(uint32_t);
-    state.counters["Memory_Bytes"] = state.range(0) * entry_size;
+    CollisionInfo info = structure->getCollisionInfo();
+    state.counters["Memory_Bytes"] = info.total_memory_bytes;
 }
 BENCHMARK_DEFINE_F(CuckooHashTableFixture, MemoryUsage)(benchmark::State& state) {
     for(auto _ : state) { benchmark::DoNotOptimize(structure.get()); }
-    size_t entry_size = sizeof(Data*);
-    state.counters["Memory_Bytes"] = state.range(0) * entry_size * 2; // Account for the larger table size
+    CuckooUsageInfo info = structure->getUsageInfo();
+    state.counters["Memory_Bytes"] = info.total_memory_bytes;
 }
 BENCHMARK_DEFINE_F(LinkedListFixture, MemoryUsage)(benchmark::State& state) {
     for(auto _ : state) { benchmark::DoNotOptimize(structure.get()); }
-    size_t node_size = sizeof(Data*) + 2 * sizeof(void*);
-    state.counters["Memory_Bytes"] = state.range(0) * node_size;
+    state.counters["Memory_Bytes"] = structure->getMemoryUsage();
 }
+BENCHMARK_DEFINE_F(SegmentTreeFixture, MemoryUsage)(benchmark::State& state) {
+    for(auto _ : state) { benchmark::DoNotOptimize(structure.get()); }
+    state.counters["Memory_Bytes"] = structure->getMemoryUsage();
+}
+
 
 // Collision Info
 BENCHMARK_DEFINE_F(HashTableFixture, CollisionInfo)(benchmark::State& state) {
@@ -404,7 +459,6 @@ BENCHMARK_REGISTER_F(HashTableFixture, CollisionInfo)->RangeMultiplier(2)->Range
 BENCHMARK_REGISTER_F(CuckooHashTableFixture, Find)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::o1);
 BENCHMARK_REGISTER_F(CuckooHashTableFixture, Insert)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::o1);
 BENCHMARK_REGISTER_F(CuckooHashTableFixture, MemoryUsage)->RangeMultiplier(2)->Range(min_range, max_range);
-// Note: The CollisionInfo test for Cuckoo has been removed as it does not apply directly.
 
 // LinkedList
 BENCHMARK_REGISTER_F(LinkedListFixture, Find)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::oN);
@@ -412,5 +466,11 @@ BENCHMARK_REGISTER_F(LinkedListFixture, Append)->RangeMultiplier(2)->Range(min_r
 BENCHMARK_REGISTER_F(LinkedListFixture, Remove)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::oN);
 BENCHMARK_REGISTER_F(LinkedListFixture, MemoryUsage)->RangeMultiplier(2)->Range(min_range, max_range);
 
-BENCHMARK_MAIN();
+// SegmentTree (NEW)
+BENCHMARK_REGISTER_F(SegmentTreeFixture, Find)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::oLogN);
+BENCHMARK_REGISTER_F(SegmentTreeFixture, Insert)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::oLogN);
+BENCHMARK_REGISTER_F(SegmentTreeFixture, Remove)->RangeMultiplier(2)->Range(min_range, max_range)->Complexity(benchmark::oLogN);
+BENCHMARK_REGISTER_F(SegmentTreeFixture, MemoryUsage)->RangeMultiplier(2)->Range(min_range, max_range);
 
+
+BENCHMARK_MAIN();
