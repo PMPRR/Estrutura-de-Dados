@@ -68,5 +68,5 @@ cmake .. && make
 - [x] fazer filtro e ordenação (0.3)
 - [x] estrutura de dado otimizada Cuckoo (1)
 - [x] estrutura de dado otimizada Skip-List otimizada (0.3)
-- [x] 5 testes difernetes em codições de restrição (1.5) [R25, R20, R9,R13 ,R5, R7]
+- [x] 6 testes diferenetes em codições de restrição (1.5) [R25, R20, R9,R13 ,R5, R7]
 
