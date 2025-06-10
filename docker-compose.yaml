@@ -85,21 +85,23 @@ services:
       - app-main 
       - live-predictor # Add dependency on the predictor
     environment:
+      # For windows with VcXsrv
+      DISPLAY: 'host.docker.internal:0.0'
       # For X11/XWayland
-      - DISPLAY=${DISPLAY} 
+      #- DISPLAY=${DISPLAY} 
       # For native Wayland applications (and XWayland context)
-      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY}
-      - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}
+      #- WAYLAND_DISPLAY=${WAYLAND_DISPLAY}
+      #- XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}
       # Hint for GTK-based backends (Tkinter might use parts of GTK for theming/rendering)
       # Prioritizes Wayland but allows X11 (XWayland) fallback.
-      - GDK_BACKEND=wayland,x11 
-    volumes:
+      #- GDK_BACKEND=wayland,x11 
+    #volumes:
       # For X11/XWayland communication
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw 
+      #- /tmp/.X11-unix:/tmp/.X11-unix:rw 
       # For native Wayland communication
-      - ${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}:${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}:rw
+      #- ${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}:${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}:rw
       # Mount the parent XDG_RUNTIME_DIR as well, as some Wayland resources might be there
-      - ${XDG_RUNTIME_DIR}:${XDG_RUNTIME_DIR}:rw
+      #- ${XDG_RUNTIME_DIR}:${XDG_RUNTIME_DIR}:rw
     networks:
       - app_network
 
