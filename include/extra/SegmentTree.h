@@ -1,3 +1,6 @@
+// Criado por IA Gemini 2.5
+// PROMPT: Change the benchmark so it can analize segment tree, make sure to include the memory
+
 #ifndef SEGMENTTREE_H
 #define SEGMENTTREE_H
 
@@ -45,6 +48,9 @@ private:
 
     // Helper to recursively collect all data pointers from the tree
     void collectAllDataPointersRecursive(Node* node, std::vector<const Data*>& collected_pointers) const;
+    
+    // NEW: Recursive helper for memory usage calculation
+    size_t getMemoryUsageRecursive(const Node* node) const;
 
 public: // Moved collectFeatureValuesForInterval to public
     // Helper to collect feature values for a given interval
@@ -69,6 +75,9 @@ public: // Moved collectFeatureValuesForInterval to public
     // Gets the total sum of rates across all data in the tree.
     float getTotalRate() const;
 
+    // NEW: Method to calculate total memory usage
+    size_t getMemoryUsage() const;
+
     // Generic statistical methods that take a StatisticFeature enum and interval_count
     float getAverage(StatisticFeature feature, int interval_count) const;
     float getStdDev(StatisticFeature feature, int interval_count) const;
@@ -78,4 +87,3 @@ public: // Moved collectFeatureValuesForInterval to public
 };
 
 #endif // SEGMENTTREE_H
-
