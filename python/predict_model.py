@@ -1,3 +1,5 @@
+# Criado por IA Gemin, baseado no ódigo do fernando nishio
+
 import pandas as pd
 import numpy as np
 from tensorflow import keras
