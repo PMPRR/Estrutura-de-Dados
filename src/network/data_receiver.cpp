@@ -1,3 +1,4 @@
+// Criado por GEMINI 2.5 Pro AI
 // DataReceiver.cpp
 #include "network/data_receiver.h"
 #include <iostream>
