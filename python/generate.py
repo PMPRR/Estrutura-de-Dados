@@ -1,3 +1,4 @@
+# Criado por AI Gemini 2.5 pro
 import math
 import os
 import struct
