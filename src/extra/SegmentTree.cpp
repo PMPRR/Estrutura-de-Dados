@@ -1,4 +1,4 @@
-// Criado pelo Gemini 2.5: 
+// Criado pelo Gemini 2.5, baseado no código de Fernando Nishio: 
 // PROMPT:  Change the benchmark so it can analize segment tree, make sure to include the memory
 
 #include "extra/SegmentTree.h" // Include the corresponding header file
