@@ -1,3 +1,5 @@
+// Criado por gemini ai 2.5 pro
+
 #include "extra/CuckooHashTable.h" // Correct header for CuckooHashTable implementation
 #include <cmath>
 #include <vector>
