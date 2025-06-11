@@ -1,3 +1,5 @@
+// Criado por Gemini AI, 
+
 #ifndef SKIPLIST_H
 #define SKIPLIST_H
 
