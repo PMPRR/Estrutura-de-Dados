@@ -1,3 +1,5 @@
+// Criado por Gemini AI 2.5 pro, baeado no código de Luiz Henrique
+
 #include "essential/RBTree.h"
 
 size_t RBTree::getMemoryUsage() const {
