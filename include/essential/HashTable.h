@@ -1,3 +1,5 @@
+// Criado por Gemini AI, baseado no código de Luiz Henrique 
+
 #ifndef HASHTABLE_H_
 #define HASHTABLE_H_
 
