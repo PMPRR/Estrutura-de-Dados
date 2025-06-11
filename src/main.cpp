@@ -1,3 +1,5 @@
+// Script criado por Geimini A1.
+
 #include <iostream>     // For std::cout, std::cerr, std::endl
 #include <string>       // For std::string, std::stoi, std::stoul
 #include <vector>       // For std::vector
