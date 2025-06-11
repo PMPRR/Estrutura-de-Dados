@@ -1,3 +1,5 @@
+// Criado por Gemini 2.5 pro AI, baseado no código de Luiz Henrique
+
 #ifndef RBTREE_H
 #define RBTREE_H
 
