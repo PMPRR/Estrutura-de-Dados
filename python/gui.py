@@ -1,3 +1,5 @@
+# Criado por IA gemini 2.5 pro
+
 import queue
 import threading
 import time
