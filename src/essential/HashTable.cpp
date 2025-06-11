@@ -1,3 +1,5 @@
+// Criado por GEMINI 2.5 pro AI, baseado no código de Luiz Henrique
+
 #include "essential/HashTable.h" // Correct header for THIS HashTable.cpp
 #include <iostream> // For potential debug/error output
 #include <functional> // For std::hash
