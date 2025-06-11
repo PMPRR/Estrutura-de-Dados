@@ -1,3 +1,5 @@
+// Criado por Gemini AI 2.5 pro, baseado no código de Fernando Nishio
+
 #include "essential/LinkedList.h"
 #include <cmath>
 #include <algorithm>
