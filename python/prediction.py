@@ -1,3 +1,4 @@
+# Criado por IA Gemini 2.5 pro, 
 import zmq
 import struct
 import pandas as pd
