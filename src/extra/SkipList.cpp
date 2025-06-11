@@ -1,3 +1,5 @@
+// Criado por Gemini AI 2.5 pro.
+
 #include "extra/SkipList.h"
 #include <iostream>
 #include <cstdlib> // For malloc, free, rand
