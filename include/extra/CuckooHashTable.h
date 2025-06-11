@@ -1,3 +1,5 @@
+// Criado por Gemini 2.5 AI, baseado no código de Fernando Nishio
+
 #ifndef CUCKOOHASHTABLE_H_
 #define CUCKOOHASHTABLE_H_
 
