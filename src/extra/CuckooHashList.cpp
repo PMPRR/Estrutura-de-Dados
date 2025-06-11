@@ -1,4 +1,4 @@
-// Criado por gemini ai 2.5 pro
+// Criado por gemini ai 2.5 pro, baseado no código de Fernando Nishio
 
 #include "extra/CuckooHashTable.h" // Correct header for CuckooHashTable implementation
 #include <cmath>
