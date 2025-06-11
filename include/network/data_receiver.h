@@ -1,3 +1,5 @@
+// Criado por Gemini ai 2.5 pro.
+
 #ifndef DATA_RECEIVER_H
 #define DATA_RECEIVER_H
 
