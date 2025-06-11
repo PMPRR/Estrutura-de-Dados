@@ -1,3 +1,5 @@
+// Criado por Gemini AI, baseado no código de Fernando Nishio
+
 #ifndef DOUBLYLINKEDLIST_H
 #define DOUBLYLINKEDLIST_H
 
