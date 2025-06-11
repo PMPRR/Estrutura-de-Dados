@@ -1,3 +1,5 @@
+// Criado por Gemini ai, baseado no código de  Paulo Ramalho
+
 #ifndef AVL_H_
 #define AVL_H_
 
