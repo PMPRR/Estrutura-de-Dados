@@ -1,3 +1,5 @@
+// Criado por Gemini AI 2.5 pro, baseado no código de Paulo Ramalho
+
 #include "essential/AVL.h"
 #include "data.h"
 #include <algorithm>
